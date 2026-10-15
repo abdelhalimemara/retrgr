@@ -83,14 +83,27 @@ export function CustomerSheet({ id, onClose, onErased }: { id: string | null; on
               <h3 className="text-sm font-medium">Touchpoints</h3>
               {detail.touchpoints.map((t) => (
                 <div key={t.id} className="rounded-md border p-3 text-sm">
-                  <div className="font-medium">
-                    {t.campaign_name ?? 'Unknown campaign'}
-                    {t.placement_name && <span className="font-normal text-muted-foreground"> · {t.placement_name}</span>}
+                  <div className="flex items-center justify-between gap-2 font-medium">
+                    <span>
+                      {t.campaign_name ?? 'Unknown campaign'}
+                      {t.placement_name && <span className="font-normal text-muted-foreground"> · {t.placement_name}</span>}
+                    </span>
+                    <Badge variant="outline">{t.source === 'auto' ? `Partner form${t.form_id ? ` · ${t.form_id}` : ''}` : 'Hosted page'}</Badge>
                   </div>
                   <div className="mt-1 text-muted-foreground">
                     {[t.utm_source, t.utm_medium, t.device_type, t.language].filter(Boolean).join(' · ') || 'No context'} ·{' '}
                     {formatDate(t.created_at)}
                   </div>
+                  {t.form_data && (
+                    <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+                      {Object.entries(t.form_data).map(([k, v]) => (
+                        <div key={k} className="contents">
+                          <dt className="text-muted-foreground">{k}</dt>
+                          <dd className="break-words">{v}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  )}
                   {(t.fbclid || t.gclid || t.ttclid || t.sccid) && (
                     <div className="mt-2 flex gap-1">
                       {t.fbclid && <Badge variant="secondary">fbclid</Badge>}

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { normalizeAgeRange, normalizeGender } from './normalize.js'
 
 export const AGE_RANGES = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'] as const
 export const GENDERS = ['male', 'female', 'undisclosed'] as const
@@ -83,18 +84,46 @@ export const captureSchema = z
     phone: z.string().trim().max(32).optional().nullable(),
     first_name: optText(100),
     last_name: optText(100),
-    age_range: z.enum(AGE_RANGES).optional().nullable(),
-    gender: z.enum(GENDERS).optional().nullable(),
+    // Auto-captured partner forms answer these freely ("Male", "ذكر", "29", "1995-04-02"…);
+    // anything that can't be mapped is dropped rather than rejected.
+    age_range: z.unknown().optional().transform((v) => normalizeAgeRange(v)),
+    gender: z.unknown().optional().transform((v) => normalizeGender(v)),
     city: optText(100),
+    // Other answers on the partner's form (label → value), kept on the touchpoint.
+    extra: z.record(z.string().max(80), z.string().max(500)).optional().nullable()
+      .refine((v) => !v || Object.keys(v).length <= 30, 'Too many fields'),
+    source: z.enum(['hosted', 'auto']).default('hosted'),
+    form_id: optText(120),
     consent: z.object({
-      // Marketing consent must be an explicit, affirmative opt-in.
-      marketing: z.literal(true),
+      analytics: z.boolean().optional(),
+      // Only an explicit, affirmative opt-in counts. Without it the lead is stored
+      // but never exported or sent to ad platforms.
+      marketing: z.boolean().default(false),
       ad_personalization: z.boolean().default(false),
       policy_version: z.string().max(32),
     }),
     context: captureContextSchema.default({}),
   })
   .refine((v) => v.email || v.phone, { message: 'Email or phone is required', path: ['email'] })
+
+/** dataLayer pushes observed on the landing page, batched by the collector. */
+export const dataLayerSchema = z.object({
+  scan_id: z.uuid(),
+  visitor_id: z.uuid(),
+  campaign: slug,
+  consent: z.object({ analytics: z.literal(true) }),
+  events: z
+    .array(
+      z.object({
+        seq: z.number().int().min(0).max(100_000),
+        ts: z.number().int().min(0),
+        event: z.string().max(120).optional().nullable(),
+        data: z.unknown(),
+      }),
+    )
+    .min(1)
+    .max(50),
+})
 
 export const withdrawSchema = z
   .object({ email: z.string().max(254).optional(), phone: z.string().max(32).optional() })

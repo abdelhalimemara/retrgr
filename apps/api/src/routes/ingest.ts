@@ -1,8 +1,9 @@
 import { Hono } from 'hono'
 import { query } from '../db.js'
-import { writeEvent } from '../lib/events.js'
+import { writeEvents, writeEvent } from '../lib/events.js'
 import { clientUserAgent, isBot, rateLimit, viaSgtm } from '../lib/request.js'
-import { engagementSchema, scanSchema } from '../lib/schemas.js'
+import { dataLayerSchema, engagementSchema, scanSchema } from '../lib/schemas.js'
+import { scrubDataLayer } from '../lib/scrub.js'
 
 /**
  * Attribution events from the collector (directly, or via the sGTM Retrgtr Client).
@@ -13,6 +14,7 @@ export const ingestRoutes = new Hono()
 
 ingestRoutes.use('/scan', rateLimit({ windowMs: 60_000, max: 30 }))
 ingestRoutes.use('/engagement', rateLimit({ windowMs: 60_000, max: 60 }))
+ingestRoutes.use('/datalayer', rateLimit({ windowMs: 60_000, max: 60 }))
 
 ingestRoutes.post('/scan', async (c) => {
   const b = scanSchema.parse(await c.req.json())
@@ -83,5 +85,37 @@ ingestRoutes.post('/engagement', async (c) => {
   )
   // Engagement only counts for scans we recorded (i.e. analytics consent was given).
   if (updated.length) await writeEvent('engagement_events', { ...b, event_ts: new Date().toISOString() }, `${b.scan_id}:${b.dwell_seconds}`)
+  return c.body(null, 202)
+})
+
+/**
+ * dataLayer pushes from the landing page (beacon-friendly). Only accepted for scans
+ * we recorded, and scrubbed of personal data before they reach BigQuery.
+ */
+ingestRoutes.post('/datalayer', async (c) => {
+  const b = dataLayerSchema.parse(JSON.parse(await c.req.text()))
+  const [scan] = await query<{ campaign_id: string | null; placement_id: string | null }>(
+    'SELECT campaign_id, placement_id FROM scans WHERE id = $1 AND visitor_id = $2',
+    [b.scan_id, b.visitor_id],
+  )
+  if (!scan) return c.body(null, 202)
+  const now = Date.now()
+  await writeEvents(
+    'datalayer_events',
+    b.events.map((e) => ({
+      insertId: `${b.scan_id}:${e.seq}`,
+      row: {
+        scan_id: b.scan_id,
+        visitor_id: b.visitor_id,
+        campaign_id: scan.campaign_id,
+        placement_id: scan.placement_id,
+        seq: e.seq,
+        // Client clocks drift; keep the client time only when it is plausible.
+        event_ts: new Date(Math.abs(now - e.ts) < 86_400_000 ? e.ts : now).toISOString(),
+        event_name: e.event ?? null,
+        data: JSON.stringify(scrubDataLayer(e.data)).slice(0, 20_000),
+      },
+    })),
+  )
   return c.body(null, 202)
 })

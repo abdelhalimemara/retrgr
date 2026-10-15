@@ -115,20 +115,22 @@ if (getRequestMethod() !== 'POST') return done(405);
 if (origin && allowed.indexOf(origin) === -1) return done(403);
 
 const action = path.substring(prefix.length + 1);
-if (['scan', 'engagement', 'capture'].indexOf(action) === -1) return done(404);
+if (['scan', 'engagement', 'capture', 'datalayer'].indexOf(action) === -1) return done(404);
 
 const raw = getRequestBody();
 const body = raw ? JSON.parse(raw) : undefined;
 if (!body) return done(400, '{"error":"Invalid JSON"}');
 
 const consent = body.consent || {};
-if (action === 'scan' && consent.analytics !== true) {
-  logToConsole('retrgtr: dropped scan without analytics consent');
+if ((action === 'scan' || action === 'datalayer') && consent.analytics !== true) {
+  logToConsole('retrgtr: dropped ' + action + ' without analytics consent');
   return done(204);
 }
-if (action === 'capture' && consent.marketing !== true) {
-  logToConsole('retrgtr: dropped lead without marketing consent');
-  return done(400, '{"error":"Marketing consent is required"}');
+// Leads without a marketing opt-in are still stored by the API (never exported), but
+// they only fire tags as a plain conversion with no user_data.
+if (action === 'capture' && consent.marketing !== true && consent.analytics !== true) {
+  logToConsole('retrgtr: dropped lead without any consent');
+  return done(400, '{"error":"Consent is required"}');
 }
 
 const ip = getRemoteAddress();
@@ -150,7 +152,7 @@ sendHttpRequest(
 ).then((res) => {
   const ok = res.statusCode >= 200 && res.statusCode < 300;
   let responseBody = res.body || '';
-  if (!ok || action === 'engagement') return done(res.statusCode, responseBody);
+  if (!ok || action === 'engagement' || action === 'datalayer') return done(res.statusCode, responseBody);
 
   const ctx = body.context || {};
   const event = {
@@ -166,7 +168,8 @@ sendHttpRequest(
     'x-retrgtr-bid': body.bid,
     'x-retrgtr-offer-variant': body.offer_variant,
     'x-retrgtr-scan-number': body.scan_number,
-    'x-retrgtr-ad-personalization': consent.ad_personalization === true,
+    'x-retrgtr-marketing-consent': consent.marketing === true,
+    'x-retrgtr-ad-personalization': consent.marketing === true && consent.ad_personalization === true,
     utm_source: ctx.utm_source,
     utm_medium: ctx.utm_medium,
     utm_campaign: ctx.utm_campaign,
@@ -179,7 +182,7 @@ sendHttpRequest(
   if (action === 'capture') {
     const parsed = JSON.parse(responseBody) || {};
     const k = parsed.match_keys;
-    if (k && consent.ad_personalization === true) {
+    if (k && consent.marketing === true && consent.ad_personalization === true) {
       // Hashes only. Raw PII is never placed in event data.
       event.user_data = {
         sha256_email_address: k.em,
@@ -191,7 +194,7 @@ sendHttpRequest(
       };
     }
     // Match keys stay server-side; the browser only learns that it worked.
-    responseBody = '{"ok":true}';
+    responseBody = '{"ok":true,"marketing_consent":' + (consent.marketing === true ? 'true' : 'false') + '}';
   }
 
   runContainer(event, () => done(res.statusCode, responseBody));

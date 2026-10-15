@@ -35,9 +35,18 @@ describe('captureSchema', () => {
     expect(captureSchema.safeParse({ ...base, phone: '0501234567' }).success).toBe(true)
   })
 
-  it('rejects missing marketing consent', () => {
-    const r = captureSchema.safeParse({ ...base, email: 'a@b.co', consent: { marketing: false, policy_version: 'v1' } })
-    expect(r.success).toBe(false)
+  it('accepts leads without marketing consent (stored, never exported)', () => {
+    const r = captureSchema.safeParse({ ...base, email: 'a@b.co', consent: { policy_version: 'v1' } })
+    expect(r.success && r.data.consent.marketing).toBe(false)
+  })
+
+  it('maps free-form partner answers instead of rejecting them', () => {
+    const r = captureSchema.parse({ ...base, email: 'a@b.co', gender: 'ذكر', age_range: '29' })
+    expect(r.gender).toBe('male')
+    expect(r.age_range).toBe('25-34')
+    const bad = captureSchema.parse({ ...base, email: 'a@b.co', gender: 'robot', age_range: 'old' })
+    expect(bad.gender).toBeNull()
+    expect(bad.age_range).toBeNull()
   })
 })
 

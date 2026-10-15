@@ -1,22 +1,34 @@
 /*!
- * Retrgtr collector v2 — install as a GTM Custom HTML tag on the QR landing page:
+ * Retrgtr collector v3 — install as a GTM Custom HTML tag on the QR landing page:
  *
  *   <script src="https://YOUR-DASHBOARD-HOST/retrgtr.js"
  *           data-endpoint="https://YOUR-SGTM-HOST"   (sGTM tagging server; or the API host)
  *           data-path="/retrgtr"                     ("/retrgtr" via sGTM, "/api/public" direct to API)
  *           data-campaign="campaign-slug" data-policy-version="v1" async></script>
  *
+ * Optional:
+ *   data-marketing-consent="checkbox" (default) marketing opt-in = a ticked consent checkbox on the form
+ *                          "submit"   the form's own wording is the opt-in, so submitting it counts
+ *   data-forms="auto" (default) | "off"     data-datalayer="on" (default) | "off"
+ *
  * In GTM, give the tag Additional Consent Checks → `analytics_storage` so it only
- * loads once analytics consent is granted. Loading the script = consent given.
+ * loads once analytics consent is granted. Loading the script = analytics consent given.
  *
  * Billboard QR URLs: /landing?bid=<placement-code>&v=<offer-variant>&utm_source=ooh…
  *
  * What it does:
  *  - scan:        device/context snapshot + repeat-exposure counter → POST {path}/scan
  *  - engagement:  dwell, scroll, CTA clicks, scan→action, form drop-off → beacon on pagehide
- *  - capture:     forms marked `data-retrgtr-form` → POST {path}/capture (needs marketing consent box)
- * Form fields are read from an ALLOWLIST only — nothing else on the form is ever sent.
- * Nothing goes to the dataLayer except non-identifying event names and placement codes.
+ *  - forms:       ANY form submitted on the page that contains an email or phone is read
+ *                 automatically (no markup changes) → POST {path}/capture. Fields are mapped
+ *                 by type/autocomplete/name/label (EN + AR). Passwords, hidden fields, card
+ *                 numbers and national IDs are never read; login forms are skipped. The page's
+ *                 own submit is never blocked. Leads without a marketing opt-in are stored but
+ *                 never exported or sent to ad platforms.
+ *  - dataLayer:   every push (existing + future) is batched → POST {path}/datalayer, with
+ *                 personal values redacted (again server-side) before it reaches BigQuery.
+ * Personal data is only ever sent to the endpoint above — never to the dataLayer.
+ * Add data-retrgtr-ignore to a form to exclude it.
  */
 (function () {
   'use strict'
@@ -31,6 +43,9 @@
   var POLICY = attr('data-policy-version', 'v1')
   var URL_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ttclid', 'sccid']
   var FORM_FIELDS = ['email', 'phone', 'first_name', 'last_name', 'age_range', 'gender', 'city']
+  var CONSENT_MODE = attr('data-marketing-consent', 'checkbox')
+  var AUTO_FORMS = attr('data-forms', 'auto') !== 'off'
+  var DATALAYER = attr('data-datalayer', 'on') !== 'off'
   var CTX_KEY = 'retrgtr_ctx'
 
   function uuid() {
@@ -188,9 +203,9 @@
   })
   document.addEventListener('focusin', function (e) {
     var f = e.target.form
-    if (f && f.hasAttribute('data-retrgtr-form') && e.target.name) {
+    if (f && !f.hasAttribute('data-retrgtr-ignore') && (e.target.name || e.target.id)) {
       formStarted = true
-      lastField = String(e.target.name).slice(0, 40) // field name only, never its value
+      lastField = String(e.target.name || e.target.id).slice(0, 40) // field name only, never its value
       action()
     }
   })
@@ -219,13 +234,16 @@
 
   // ---- lead capture ----
   function capture(fields) {
-    if (!fields.consent_marketing) return Promise.reject(new Error('Marketing consent is required'))
+    var marketing = !!fields.consent_marketing
     var body = {
       campaign: fields.campaign || CAMPAIGN,
       bid: bid,
       scan_id: ctx.scan_id,
       visitor_id: visitorId,
-      consent: { marketing: true, ad_personalization: !!fields.consent_ad_personalization, policy_version: POLICY },
+      source: fields.source || 'hosted',
+      form_id: fields.form_id || null,
+      extra: fields.extra || null,
+      consent: { analytics: true, marketing: marketing, ad_personalization: marketing && !!fields.consent_ad_personalization, policy_version: POLICY },
       context: context(),
     }
     FORM_FIELDS.forEach(function (k) {
@@ -240,33 +258,162 @@
         )
       }
       formSubmitted = true
-      push({ event: 'ooh_lead', ooh_bid: bid, ooh_ad_personalization: !!fields.consent_ad_personalization })
+      push({ event: 'ooh_lead', ooh_bid: bid, ooh_marketing_consent: marketing, ooh_ad_personalization: body.consent.ad_personalization })
     })
   }
 
-  function bind(form) {
-    if (form.__retrgtr) return
-    form.__retrgtr = true
-    form.addEventListener('submit', function (e) {
-      e.preventDefault()
-      var fields = { campaign: form.getAttribute('data-retrgtr-form') || CAMPAIGN }
-      FORM_FIELDS.forEach(function (k) {
-        var el = form.elements[k]
-        if (el && typeof el.value === 'string' && el.value.trim()) fields[k] = el.value.trim().slice(0, 254)
-      })
-      fields.consent_marketing = !!(form.elements.consent_marketing && form.elements.consent_marketing.checked)
-      fields.consent_ad_personalization = !!(form.elements.consent_ad_personalization && form.elements.consent_ad_personalization.checked)
-      capture(fields).then(
-        function () { form.dispatchEvent(new CustomEvent('retrgtr:success')) },
-        function (err) { form.dispatchEvent(new CustomEvent('retrgtr:error', { detail: err.message })) },
-      )
-    })
+  // ---- automatic form capture (any form on the page; no markup changes needed) ----
+  var SKIP_TYPES = /^(password|hidden|file|submit|button|reset|image)$/
+  var SENSITIVE = /pass|pwd|secret|token|csrf|captcha|(^|[_-\s])otp($|[_-\s])|cvv|cvc|card|iban|ssn|national.?id|iqama|passport|هوية|إقامة|اقامة|جواز|بطاقة|كلمة.?المرور/i
+  var EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  var AD_RE = /\bads?\b|advert|personali[sz]|social media|retarget|إعلان|اعلان|الإعلانات/i
+  var MARKETING_RE = /market|newsletter|offer|promot|updates|communicat|contact me|subscribe|news|تسويق|عروض|النشرة|التواصل|الاشتراك|رسائل/i
+
+  function labelOf(el) {
+    var lab = (el.labels && el.labels[0]) || (el.closest && el.closest('label'))
+    var t = ''
+    if (lab) {
+      // Label text without the text of controls nested inside it (e.g. a select's options).
+      var copy = lab.cloneNode(true)
+      Array.prototype.forEach.call(copy.querySelectorAll('input, select, textarea, button'), function (n) { n.remove() })
+      t = copy.textContent
+    }
+    t = (t && t.trim()) || el.getAttribute('aria-label') || el.placeholder || ''
+    return String(t).replace(/\s+/g, ' ').trim().slice(0, 300)
   }
-  function scan() {
-    document.querySelectorAll('form[data-retrgtr-form]').forEach(bind)
+  function classify(el, label) {
+    var ac = (el.getAttribute('autocomplete') || '').toLowerCase()
+    var key = [el.name, el.id, ac, label].join(' ').toLowerCase()
+    if (el.type === 'email' || ac === 'email' || /e-?mail|بريد/.test(key)) return 'email'
+    if (el.type === 'tel' || /^tel/.test(ac) || /phone|mobile|\btel\b|whats|جوال|هاتف/.test(key)) return 'phone'
+    if (ac === 'given-name' || /first|given|(^|[\s_-])fname\b|الاسم الأول/.test(key)) return 'first_name'
+    if (ac === 'family-name' || /last|surname|family|(^|[\s_-])lname\b|اسم العائلة/.test(key)) return 'last_name'
+    if (/gender|\bsex\b|الجنس/.test(key)) return 'gender'
+    if (ac === 'bday' || /\bage\b|birth|dob|عمر|العمر|ميلاد/.test(key)) return 'age_range'
+    if (ac === 'address-level2' || /city|town|مدينة|المدينة/.test(key)) return 'city'
+    if (/company|business|organi[sz]|brand|store|شركة|منشأة|الجهة/.test(key)) return null
+    if (ac === 'name' || /(^|\s)(full.?)?name(\s|$)|الاسم|اسم/.test(key)) return 'full_name'
+    return null
   }
 
-  window.retrgtr = { capture: capture, scan: scan, scanId: ctx.scan_id }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan)
-  else scan()
+  /** Reads a form into capture fields, or null when there's no email/phone to identify the person. */
+  function readForm(form) {
+    if (form.hasAttribute('data-retrgtr-ignore') || form.querySelector('input[type=password]')) return null
+    var f = { source: 'auto', extra: {}, consent_marketing: CONSENT_MODE === 'submit', consent_ad_personalization: false }
+    var extras = 0
+    Array.prototype.forEach.call(form.elements, function (el) {
+      if (!el.name && !el.id) return
+      var type = (el.type || '').toLowerCase()
+      if (SKIP_TYPES.test(type) || el.disabled) return
+      var label = labelOf(el)
+      if (SENSITIVE.test([el.name, el.id, el.getAttribute('autocomplete'), label].join(' '))) return
+      if (type === 'checkbox') {
+        if (!el.checked) return
+        if (AD_RE.test(label)) f.consent_ad_personalization = f.consent_marketing = true
+        else if (MARKETING_RE.test(label)) f.consent_marketing = true
+        else if (extras < 30) (f.extra[(label || el.name || el.id).slice(0, 80)] = el.value && el.value !== 'on' ? el.value : 'yes'), extras++
+        return
+      }
+      if (type === 'radio' && !el.checked) return
+      var value = el.tagName === 'SELECT' && el.selectedIndex >= 0 ? el.options[el.selectedIndex].text || el.value : el.value
+      value = typeof value === 'string' ? value.trim().slice(0, 500) : ''
+      if (!value) return
+      var kind = classify(el, label) || (EMAIL_RE.test(value) ? 'email' : null)
+      if (kind === 'full_name') {
+        var parts = value.split(/\s+/)
+        f.first_name = f.first_name || parts.shift()
+        if (parts.length) f.last_name = f.last_name || parts.join(' ')
+      } else if (kind === 'age_range' && el.tagName === 'SELECT') f.age_range = f.age_range || el.value || value
+      else if (kind && !f[kind]) f[kind] = kind === 'email' || kind === 'phone' ? value.slice(0, kind === 'email' ? 254 : 32) : value
+      else if (extras < 30) (f.extra[(label || el.name || el.id).slice(0, 80)] = value), extras++
+    })
+    if (!f.email && !f.phone) return null
+    if (f.email && !EMAIL_RE.test(f.email)) delete f.email
+    if (!f.email && !f.phone) return null
+    var action = form.getAttribute('action') || ''
+    f.form_id = (form.id || form.getAttribute('name') || action.split('?')[0] || 'form').slice(0, 120)
+    return f
+  }
+
+  var recent = {}
+  function autoCapture(form) {
+    var f = readForm(form)
+    if (!f) return
+    var sig = (f.email || '') + '|' + (f.phone || '')
+    if (recent[sig] && Date.now() - recent[sig] < 10000) return // submit + button click for the same form
+    recent[sig] = Date.now()
+    capture(f).then(
+      function () { form.dispatchEvent(new CustomEvent('retrgtr:success')) },
+      function (err) { form.dispatchEvent(new CustomEvent('retrgtr:error', { detail: err.message })) },
+    )
+  }
+  if (AUTO_FORMS) {
+    // Capture phase, never preventDefault: the partner's own submit handling runs untouched.
+    document.addEventListener('submit', function (e) { if (e.target && e.target.tagName === 'FORM') autoCapture(e.target) }, true)
+    // Forms submitted by JavaScript (SPA/AJAX) often never fire `submit`.
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('button, input[type=submit], [role=button]')
+      var form = btn && (btn.form || btn.closest('form'))
+      if (form && (btn.type === 'submit' || btn.getAttribute('type') == null)) setTimeout(function () { autoCapture(form) }, 0)
+    }, true)
+  }
+
+  // ---- dataLayer mirroring ----
+  var dlQueue = []
+  var dlSeq = parseInt(store('sessionStorage', 'retrgtr_dlseq') || '0', 10)
+  var dlSent = 0
+  var PERSONAL_KEY = /e.?mail|phone|mobile|msisdn|whats.?app|address|street|postal|zip|birth|dob|user_data|^(name|fname|lname|surname|(first|last|full|given|family|user|customer)[_-]?name)$/i
+  function clean(v, depth) {
+    if (v === null || typeof v === 'boolean') return v
+    if (typeof v === 'number') return isFinite(v) ? v : null
+    if (typeof v === 'string') return EMAIL_RE.test(v.trim()) ? '[redacted]' : v.slice(0, 500)
+    if (typeof v !== 'object' || depth > 4 || v.nodeType || v === window) return null
+    if (Array.isArray(v)) return v.slice(0, 50).map(function (x) { return clean(x, depth + 1) })
+    var out = {}
+    var n = 0
+    for (var k in v) {
+      if (!Object.prototype.hasOwnProperty.call(v, k) || typeof v[k] === 'function' || n++ >= 100) continue
+      out[k] = SENSITIVE.test(k) || PERSONAL_KEY.test(k) ? '[redacted]' : clean(v[k], depth + 1)
+    }
+    return out
+  }
+  function record(entry) {
+    if (!entry || typeof entry !== 'object' || dlSent + dlQueue.length >= 500) return
+    var name = null
+    var data = entry
+    if (!Array.isArray(entry) && typeof entry.length === 'number' && entry[0] !== undefined) {
+      // gtag('event', 'purchase', {...}) pushes an `arguments` object.
+      var args = Array.prototype.slice.call(entry)
+      name = args[0] === 'event' ? args[1] : 'gtag.' + args[0]
+      data = { gtag: args }
+    } else name = entry.event || null
+    if (typeof name === 'string' && (/^gtm\./.test(name) || /^ooh_/.test(name))) return // GTM internals / our own events
+    dlQueue.push({ seq: dlSeq++, ts: Date.now(), event: name ? String(name).slice(0, 120) : null, data: clean(data, 0) })
+    store('sessionStorage', 'retrgtr_dlseq', String(dlSeq))
+  }
+  function flushDataLayer(beacon) {
+    while (dlQueue.length && CAMPAIGN) {
+      var batch = dlQueue.splice(0, 50)
+      dlSent += batch.length
+      send('/datalayer', { scan_id: ctx.scan_id, visitor_id: visitorId, campaign: CAMPAIGN, consent: { analytics: true }, events: batch }, beacon)
+    }
+  }
+  if (DATALAYER) {
+    var dl = (window.dataLayer = window.dataLayer || [])
+    for (var i = 0; i < dl.length; i++) record(dl[i])
+    var origPush = dl.push
+    dl.push = function () {
+      for (var j = 0; j < arguments.length; j++) record(arguments[j])
+      return origPush.apply(dl, arguments)
+    }
+    // First flush waits for the scan to be recorded; the API only accepts events for known scans.
+    setTimeout(function tick() {
+      flushDataLayer(false)
+      setTimeout(tick, 5000)
+    }, 3000)
+    document.addEventListener('visibilitychange', function () { if (document.hidden) flushDataLayer(true) })
+    window.addEventListener('pagehide', function () { flushDataLayer(true) })
+  }
+
+  window.retrgtr = { capture: capture, readForm: readForm, scanId: ctx.scan_id }
 })()

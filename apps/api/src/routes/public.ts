@@ -6,6 +6,7 @@ import { cleanName, normalizeEmail, normalizePhone, sha256 } from '../lib/normal
 import { matchKeys } from '../lib/exporters.js'
 import { clientIp, clientUserAgent, rateLimit, viaSgtm } from '../lib/request.js'
 import { captureSchema, withdrawSchema } from '../lib/schemas.js'
+import { cleanFormExtras } from '../lib/scrub.js'
 
 export const publicRoutes = new Hono()
 
@@ -46,7 +47,10 @@ publicRoutes.post('/capture', async (c) => {
 
   const emailHash = email ? sha256(email) : null
   const phoneHash = phone ? sha256(phone) : null
-  const purposes = ['marketing', ...(body.consent.ad_personalization ? ['ad_personalization'] : [])]
+  // Ad personalisation only counts on top of marketing consent.
+  const adConsent = body.consent.marketing && body.consent.ad_personalization
+  const purposes = body.consent.marketing ? ['marketing', ...(adConsent ? ['ad_personalization'] : [])] : []
+  const extra = cleanFormExtras(body.extra)
 
   const save = () => withTransaction(async (db) => {
     const existing = await db.query<{ id: string }>(
@@ -91,18 +95,14 @@ publicRoutes.post('/capture', async (c) => {
       customerId = inserted.rows[0].id
     }
 
-    await db.query(
-      `INSERT INTO consents (customer_id, campaign_id, policy_version, purposes, ip_address, user_agent)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        customerId,
-        campaign.id,
-        body.consent.policy_version,
-        purposes,
-        clientIp(c),
-        clientUserAgent(c),
-      ],
-    )
+    // No opt-in → no consent row: the lead is kept but excluded from every segment and export.
+    if (purposes.length) {
+      await db.query(
+        `INSERT INTO consents (customer_id, campaign_id, policy_version, purposes, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [customerId, campaign.id, body.consent.policy_version, purposes, clientIp(c), clientUserAgent(c)],
+      )
+    }
 
     // Attach this scan, and earlier anonymous scans from the same device, to the person.
     if (body.scan_id || body.visitor_id) {
@@ -118,8 +118,8 @@ publicRoutes.post('/capture', async (c) => {
     const ctx = body.context
     await db.query(
       `INSERT INTO touchpoints (customer_id, campaign_id, placement_id, scan_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
-         fbclid, gclid, ttclid, sccid, landing_url, referrer, device_type, language, timezone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)`,
+         fbclid, gclid, ttclid, sccid, landing_url, referrer, device_type, language, timezone, source, form_id, form_data)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)`,
       [
         customerId,
         campaign.id,
@@ -139,6 +139,9 @@ publicRoutes.post('/capture', async (c) => {
         ctx.device_type ?? null,
         ctx.language ?? null,
         ctx.timezone ?? null,
+        body.source,
+        body.form_id ?? null,
+        extra,
       ],
     )
   })
@@ -149,10 +152,10 @@ publicRoutes.post('/capture', async (c) => {
 
   // The sGTM Retrgtr Client gets hashed match keys to populate user_data for
   // CAPI / Customer Match tags — only with ad-personalisation consent, never to browsers.
-  if (viaSgtm(c) && body.consent.ad_personalization) {
+  if (viaSgtm(c) && adConsent) {
     return c.json({ ok: true, match_keys: matchKeys({ email, phone, first_name: body.first_name, last_name: body.last_name, city: body.city, gender: body.gender, country: config.defaultCountry }) }, 201)
   }
-  return c.json({ ok: true }, 201)
+  return c.json({ ok: true, marketing_consent: body.consent.marketing }, 201)
 })
 
 /**

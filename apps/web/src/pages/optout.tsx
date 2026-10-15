@@ -36,7 +36,7 @@ export default function OptOutPage() {
         </CardHeader>
         {!done && (
           <CardContent>
-            <form onSubmit={onSubmit} className="grid gap-4">
+            <form onSubmit={onSubmit} className="grid gap-4" data-retrgtr-ignore>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" name="email" type="email" />

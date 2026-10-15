@@ -76,6 +76,9 @@ export interface CustomerDetail {
     gclid: string | null
     ttclid: string | null
     sccid: string | null
+    source: 'hosted' | 'auto'
+    form_id: string | null
+    form_data: Record<string, string> | null
     created_at: string
   }[]
 }

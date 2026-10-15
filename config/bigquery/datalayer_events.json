@@ -1,0 +1,10 @@
+[
+  { "name": "scan_id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "visitor_id", "type": "STRING", "mode": "REQUIRED" },
+  { "name": "campaign_id", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "placement_id", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "seq", "type": "INTEGER", "mode": "NULLABLE" },
+  { "name": "event_ts", "type": "TIMESTAMP", "mode": "REQUIRED" },
+  { "name": "event_name", "type": "STRING", "mode": "NULLABLE" },
+  { "name": "data", "type": "JSON", "mode": "NULLABLE", "description": "dataLayer push, scrubbed of personal data" }
+]

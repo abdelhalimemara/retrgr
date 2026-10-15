@@ -76,6 +76,7 @@ mk_table() { # table partition_field clustering schema
 }
 mk_table scan_events scan_ts bid,campaign_id scan_events.json
 mk_table engagement_events event_ts scan_id engagement_events.json
+mk_table datalayer_events event_ts scan_id,event_name datalayer_events.json
 # Aggregated Google Signals reads per billboard — never joined to users (brief §3, §7).
 mk_table billboard_demographics report_date billboard_id billboard_demographics.json
 # Dataset-level WRITER (= dataEditor) for the API, via the dataset access list.

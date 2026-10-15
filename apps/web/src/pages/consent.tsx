@@ -125,7 +125,7 @@ export default function ConsentPage() {
           <CardTitle className="text-xl">{campaign.headline ?? campaign.name}</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={onSubmit} className="grid gap-4">
+          <form onSubmit={onSubmit} className="grid gap-4" data-retrgtr-ignore>
             <div className="grid gap-2">
               <Label htmlFor="first_name">First name</Label>
               <Input id="first_name" name="first_name" autoComplete="given-name" />

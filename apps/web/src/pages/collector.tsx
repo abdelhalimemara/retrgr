@@ -43,30 +43,15 @@ export default function CollectorPage() {
         data-endpoint="${endpoint}"
         data-path="${path}"
         data-campaign="${campaign}"
-        data-policy-version="v1" async></script>`
+        data-policy-version="v1"
+        data-marketing-consent="checkbox" async></script>`
 
-  const form = `<form data-retrgtr-form="${campaign}">
-  <input name="first_name" placeholder="First name">
-  <input name="email" type="email" placeholder="Email">
-  <input name="phone" type="tel" placeholder="Mobile">
-  <select name="age_range">
-    <option value="18-24">18–24</option><option value="25-34">25–34</option>
-    <option value="35-44">35–44</option><option value="45-54">45–54</option>
-    <option value="55-64">55–64</option><option value="65+">65+</option>
-  </select>
-  <select name="gender">
-    <option value="female">Female</option><option value="male">Male</option>
-    <option value="undisclosed">Prefer not to say</option>
-  </select>
-  <label><input type="checkbox" name="consent_marketing" required>
-    I agree to receive marketing from [Brand] (Privacy Policy v1)</label>
-  <label><input type="checkbox" name="consent_ad_personalization">
-    Use my hashed email/phone to show me relevant ads on social media</label>
-  <button>Submit</button>
-</form>
+  const options = `<!-- Optional: exclude a form (e.g. a footer newsletter) from capture -->
+<form data-retrgtr-ignore> … </form>
+
+<!-- Optional: react to a captured lead -->
 <script>
-  document.querySelector('[data-retrgtr-form]')
-    .addEventListener('retrgtr:success', () => { /* show thank-you */ })
+  document.addEventListener('retrgtr:success', (e) => { /* e.target = the form */ }, true)
 </script>`
 
   return (
@@ -93,7 +78,7 @@ export default function CollectorPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
             <CardTitle>1. GTM Custom HTML tag</CardTitle>
             <CardDescription>
@@ -107,16 +92,26 @@ export default function CollectorPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="min-w-0">
           <CardHeader>
-            <CardTitle>2. Consent form markup</CardTitle>
+            <CardTitle>2. Forms and dataLayer are captured automatically</CardTitle>
             <CardDescription>
-              Add <code>data-retrgtr-form</code> to the partner’s form and use these field names. Or skip this entirely and send
-              QR traffic to the hosted page at <code>/c/{campaign}</code>.
+              No changes to the partner’s page. Any form submitted with an email or mobile number is read and sent to
+              Retrgtr; fields are recognised by type, autocomplete, name and label (English and Arabic). Every dataLayer push
+              is mirrored to BigQuery with personal values redacted.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <CodeBlock code={form} />
+          <CardContent className="grid grid-cols-1 gap-4 text-sm">
+            <div>
+              <div className="font-medium">Marketing consent</div>
+              <p className="text-muted-foreground">
+                <code>data-marketing-consent="checkbox"</code> (default): a lead counts as opted in only when a ticked
+                checkbox on the form mentions marketing, offers or newsletters; one mentioning ads or personalisation also
+                grants ad personalisation. Use <code>"submit"</code> only when the form’s own wording is the opt-in. Leads
+                without an opt-in are stored but never exported or sent to ad platforms.
+              </p>
+            </div>
+            <CodeBlock code={options} />
           </CardContent>
         </Card>
 
@@ -127,20 +122,25 @@ export default function CollectorPage() {
           <CardContent className="grid gap-4 text-sm md:grid-cols-3">
             <div>
               <div className="font-medium">Declared by the person</div>
-              <p className="text-muted-foreground">Email, mobile, name, age range, gender, city — plus explicit consent per purpose.</p>
+              <p className="text-muted-foreground">
+                Email, mobile, name, age, gender and city are mapped onto the customer record; other answers on the form are
+                kept on the touchpoint. Consent comes from the form’s own checkboxes.
+              </p>
             </div>
             <div>
               <div className="font-medium">Read by the collector (after analytics consent)</div>
               <p className="text-muted-foreground">
                 Billboard code (bid), offer variant, UTMs and click IDs, device model / OS / screen, language, time zone,
-                connection type, repeat-scan count, dwell, scroll depth, CTA clicks and form drop-off field.
+                connection type, repeat-scan count, dwell, scroll depth, CTA clicks, form drop-off field, and every dataLayer
+                push (ecommerce, page and custom events) with personal values redacted.
               </p>
             </div>
             <div>
               <div className="font-medium">Never collected</div>
               <p className="text-muted-foreground">
-                No third-party cookies, fingerprinting, cross-site tracking, GPS or national IDs. Form fields outside the allowlist
-                are ignored. Age and gender are always self-declared.
+                No third-party cookies, fingerprinting, cross-site tracking or GPS. Passwords, hidden fields, card numbers and
+                national ID / Iqama numbers are never read, login forms are skipped, and nothing personal is pushed to the
+                dataLayer. Age and gender are always self-declared.
               </p>
             </div>
           </CardContent>
