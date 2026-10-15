@@ -5,9 +5,12 @@
 #
 #   CONTAINER_CONFIG='aWQ9R1RNLV...' PROJECT_ID=my-project ./scripts/deploy-sgtm.sh
 #
+# ONE server container serves every partner; partners only add the collector
+# snippet (with their partner key) to their own web GTM.
 # Then in the sGTM container: import config/sgtm/retrgtr-client.tpl as a Client
 # template, add a "Retrgtr Client" client (API URL, shared secret from Secret
-# Manager `retrgtr-sgtm-secret`, allowed origins), and add your GA4 / Meta CAPI /
+# Manager `retrgtr-sgtm-secret`; leave allowed origins empty — the API checks each
+# partner's registered websites), and add your GA4 / Meta CAPI /
 # TikTok Events API / Snap CAPI / Google Ads tags triggered on event names
 # `ooh_scan` and `generate_lead`. Gate activation tags on the event-data key
 # `x-retrgtr-ad-personalization` equals true.

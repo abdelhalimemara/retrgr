@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { normalizeAgeRange, normalizeGender } from './normalize.js'
+import { normalizeAgeRange, normalizeGender, normalizeOrigin } from './normalize.js'
 
 export const AGE_RANGES = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'] as const
 export const GENDERS = ['male', 'female', 'undisclosed'] as const
@@ -29,6 +29,10 @@ export const captureContextSchema = z
   .partial()
 
 const slug = z.string().regex(/^[a-z0-9-]{3,64}$/)
+/** Public partner key from the collector snippet (data-partner). */
+const partnerKey = z.string().regex(/^[a-z0-9]{6,32}$/)
+const hasTarget = (v: { campaign?: string | null; partner?: string | null; bid?: string | null }) =>
+  !!(v.campaign || v.partner || v.bid)
 const placementCode = z.string().regex(/^[a-z0-9-]{2,40}$/)
 const smallInt = z.number().int().min(0).max(1_000_000).optional().nullable()
 
@@ -36,7 +40,8 @@ const smallInt = z.number().int().min(0).max(1_000_000).optional().nullable()
 export const scanSchema = z.object({
   scan_id: z.uuid(),
   visitor_id: z.uuid(),
-  campaign: slug,
+  campaign: slug.optional().nullable(),
+  partner: partnerKey.optional().nullable(),
   bid: placementCode.optional().nullable(),
   offer_variant: optText(40),
   scan_number: z.number().int().min(1).max(10_000).default(1),
@@ -61,7 +66,7 @@ export const scanSchema = z.object({
     })
     .partial()
     .default({}),
-})
+}).refine(hasTarget, { message: 'campaign, partner or bid is required' })
 
 export const engagementSchema = z.object({
   scan_id: z.uuid(),
@@ -76,7 +81,8 @@ export const engagementSchema = z.object({
 
 export const captureSchema = z
   .object({
-    campaign: slug,
+    campaign: slug.optional().nullable(),
+    partner: partnerKey.optional().nullable(),
     scan_id: z.uuid().optional().nullable(),
     visitor_id: z.uuid().optional().nullable(),
     bid: placementCode.optional().nullable(),
@@ -105,12 +111,14 @@ export const captureSchema = z
     context: captureContextSchema.default({}),
   })
   .refine((v) => v.email || v.phone, { message: 'Email or phone is required', path: ['email'] })
+  .refine(hasTarget, { message: 'campaign, partner or bid is required' })
 
 /** dataLayer pushes observed on the landing page, batched by the collector. */
 export const dataLayerSchema = z.object({
   scan_id: z.uuid(),
   visitor_id: z.uuid(),
-  campaign: slug,
+  campaign: slug.optional().nullable(),
+  partner: partnerKey.optional().nullable(),
   consent: z.object({ analytics: z.literal(true) }),
   events: z
     .array(
@@ -131,6 +139,20 @@ export const withdrawSchema = z
 
 export const partnerSchema = z.object({
   name: z.string().trim().min(1).max(200),
+  // Websites allowed to run this partner's collector, normalised to origins.
+  allowed_origins: z
+    .array(z.string().trim().max(200))
+    .max(50)
+    .default([])
+    .transform((list, ctx) => {
+      const out = new Set<string>()
+      for (const raw of list.filter(Boolean)) {
+        const o = normalizeOrigin(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+        if (!o) ctx.addIssue({ code: 'custom', message: `Not a website address: ${raw}` })
+        else out.add(o)
+      }
+      return [...out]
+    }),
   contact_email: z.email().optional().nullable(),
   notes: optText(2000),
 })

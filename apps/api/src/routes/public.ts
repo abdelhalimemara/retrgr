@@ -4,7 +4,8 @@ import { config } from '../config.js'
 import { query, withTransaction } from '../db.js'
 import { cleanName, normalizeEmail, normalizePhone, sha256 } from '../lib/normalize.js'
 import { matchKeys } from '../lib/exporters.js'
-import { clientIp, clientUserAgent, rateLimit, viaSgtm } from '../lib/request.js'
+import { clientIp, clientUserAgent, rateLimit, requestOrigin, viaSgtm } from '../lib/request.js'
+import { resolveTarget } from '../lib/targets.js'
 import { captureSchema, withdrawSchema } from '../lib/schemas.js'
 import { cleanFormExtras } from '../lib/scrub.js'
 
@@ -37,13 +38,9 @@ publicRoutes.post('/capture', async (c) => {
   if (body.email && !email) throw new HTTPException(400, { message: 'Invalid email' })
   if (body.phone && !phone) throw new HTTPException(400, { message: 'Invalid phone number' })
 
-  const [campaign] = await query<{ id: string; city: string | null; placement_id: string | null }>(
-    `SELECT cp.id, cp.city, pl.id AS placement_id
-       FROM campaigns cp LEFT JOIN placements pl ON pl.campaign_id = cp.id AND pl.code = $2
-      WHERE cp.slug = $1 AND cp.status = 'active'`,
-    [body.campaign, body.bid ?? null],
-  )
-  if (!campaign) throw new HTTPException(404, { message: 'Campaign not found' })
+  const target = await resolveTarget(body, requestOrigin(c))
+  if (!target) throw new HTTPException(404, { message: 'Campaign not found' })
+  const campaign = { id: target.campaign_id, city: target.city, placement_id: target.placement_id }
 
   const emailHash = email ? sha256(email) : null
   const phoneHash = phone ? sha256(phone) : null

@@ -56,3 +56,18 @@ export function normalizeAgeRange(raw: unknown, now = new Date()): string | null
   if (age === null || age < 18 || age > 110) return null // under-18s are never profiled
   return AGE_BANDS.find(([max]) => age! <= max)?.[1] ?? '65+'
 }
+
+/** Lowercased scheme://host[:port], or null when the value isn't an http(s) origin. */
+export function normalizeOrigin(raw: string | null | undefined): string | null {
+  if (!raw) return null
+  try {
+    const u = new URL(raw.trim())
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null
+    const host = u.hostname.toLowerCase()
+    // Real hostnames only: labels of letters/digits/hyphens, dotted (or localhost for testing).
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)*$/.test(host) || (!host.includes('.') && host !== 'localhost')) return null
+    return u.origin.toLowerCase()
+  } catch {
+    return null
+  }
+}

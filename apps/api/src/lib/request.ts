@@ -23,6 +23,11 @@ export function clientIp(c: Context): string | null {
   return c.req.header('X-Forwarded-For')?.split(',').pop()?.trim() || null
 }
 
+/** Page origin the collector ran on (forwarded by the sGTM client, else the browser's Origin header). */
+export function requestOrigin(c: Context): string | null {
+  return (viaSgtm(c) ? c.req.header('X-Retrgtr-Origin') : c.req.header('Origin'))?.trim() || null
+}
+
 export function clientUserAgent(c: Context): string | null {
   return (viaSgtm(c) ? c.req.header('X-Retrgtr-User-Agent') : c.req.header('User-Agent'))?.slice(0, 500) ?? null
 }

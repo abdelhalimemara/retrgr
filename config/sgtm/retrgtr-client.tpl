@@ -52,9 +52,8 @@ ___TEMPLATE_PARAMETERS___
   {
     "type": "TEXT",
     "name": "allowedOrigins",
-    "displayName": "Allowed landing-page origins (comma separated, e.g. https://scan.brand.sa)",
-    "simpleValueType": true,
-    "valueValidators": [{ "type": "NON_EMPTY" }]
+    "displayName": "Extra origin allowlist (optional, comma separated). Leave empty: one container serves every partner and the API checks each partner's registered websites.",
+    "simpleValueType": true
   }
 ]
 
@@ -90,8 +89,9 @@ if (path.indexOf(prefix + '/') !== 0) return;
 claimRequest();
 
 const origin = getRequestHeader('origin');
-const allowed = data.allowedOrigins.split(',').map((o) => o.trim());
-if (origin && allowed.indexOf(origin) !== -1) {
+const allowed = (data.allowedOrigins || '').split(',').map((o) => o.trim()).filter((o) => !!o);
+const originOk = !origin || allowed.length === 0 || allowed.indexOf(origin) !== -1;
+if (origin && originOk) {
   setResponseHeader('Access-Control-Allow-Origin', origin);
   setResponseHeader('Vary', 'Origin');
 }
@@ -112,7 +112,7 @@ if (getRequestMethod() === 'OPTIONS') {
   return done(204);
 }
 if (getRequestMethod() !== 'POST') return done(405);
-if (origin && allowed.indexOf(origin) === -1) return done(403);
+if (!originOk) return done(403);
 
 const action = path.substring(prefix.length + 1);
 if (['scan', 'engagement', 'capture', 'datalayer'].indexOf(action) === -1) return done(404);
@@ -146,6 +146,8 @@ sendHttpRequest(
       'X-Retrgtr-Key': data.sharedSecret,
       'X-Retrgtr-Client-IP': ip || '',
       'X-Retrgtr-User-Agent': ua,
+      // The API checks this against the partner's registered websites.
+      'X-Retrgtr-Origin': origin || '',
     },
   },
   raw
@@ -165,6 +167,7 @@ sendHttpRequest(
     page_referrer: ctx.referrer,
     language: ctx.language,
     'x-retrgtr-campaign': body.campaign,
+    'x-retrgtr-partner': body.partner,
     'x-retrgtr-bid': body.bid,
     'x-retrgtr-offer-variant': body.offer_variant,
     'x-retrgtr-scan-number': body.scan_number,

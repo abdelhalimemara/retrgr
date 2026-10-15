@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { z } from 'zod'
 import { HTTPException } from 'hono/http-exception'
 import type { AuthEnv } from '../auth.js'
 import { audit, query } from '../db.js'
@@ -19,8 +20,8 @@ catalogRoutes.get('/partners', async (c) =>
 catalogRoutes.post('/partners', async (c) => {
   const b = partnerSchema.parse(await c.req.json())
   const [row] = await query(
-    'INSERT INTO partners (name, contact_email, notes) VALUES ($1, $2, $3) RETURNING *',
-    [b.name, b.contact_email ?? null, b.notes ?? null],
+    'INSERT INTO partners (name, contact_email, notes, allowed_origins) VALUES ($1, $2, $3, $4) RETURNING *',
+    [b.name, b.contact_email ?? null, b.notes ?? null, b.allowed_origins],
   )
   await audit(c.get('actor'), 'create', 'partner', row.id)
   return c.json(row, 201)
@@ -29,10 +30,11 @@ catalogRoutes.post('/partners', async (c) => {
 catalogRoutes.put('/partners/:id', async (c) => {
   const b = partnerSchema.parse(await c.req.json())
   const [row] = await query(
-    'UPDATE partners SET name = $1, contact_email = $2, notes = $3 WHERE id = $4 RETURNING *',
-    [b.name, b.contact_email ?? null, b.notes ?? null, c.req.param('id')],
+    'UPDATE partners SET name = $1, contact_email = $2, notes = $3, allowed_origins = $4 WHERE id = $5 RETURNING *',
+    [b.name, b.contact_email ?? null, b.notes ?? null, b.allowed_origins, z.uuid().parse(c.req.param('id'))],
   )
   if (!row) throw new HTTPException(404)
+  await audit(c.get('actor'), 'update', 'partner', row.id)
   return c.json(row)
 })
 

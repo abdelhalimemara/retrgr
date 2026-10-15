@@ -2,9 +2,14 @@
  * Retrgtr collector v3 — install as a GTM Custom HTML tag on the QR landing page:
  *
  *   <script src="https://YOUR-DASHBOARD-HOST/retrgtr.js"
- *           data-endpoint="https://YOUR-SGTM-HOST"   (sGTM tagging server; or the API host)
+ *           data-endpoint="https://YOUR-SGTM-HOST"   (the central Retrgtr sGTM; or the API host)
  *           data-path="/retrgtr"                     ("/retrgtr" via sGTM, "/api/public" direct to API)
- *           data-campaign="campaign-slug" data-policy-version="v1" async></script>
+ *           data-partner="PARTNER-KEY" data-policy-version="v1" async></script>
+ *
+ * One snippet per partner, in the partner's own GTM. The campaign is resolved from the
+ * billboard code (bid) in the QR URL, else the partner's active campaign. Optional
+ * data-campaign="slug" pins a campaign. Requests are only accepted from the websites
+ * registered for the partner in the dashboard.
  *
  * Optional:
  *   data-marketing-consent="checkbox" (default) marketing opt-in = a ticked consent checkbox on the form
@@ -39,7 +44,8 @@
   }
   var pathAttr = s && s.getAttribute('data-path')
   var ENDPOINT = attr('data-endpoint', '').replace(/\/$/, '') + (pathAttr == null ? '/retrgtr' : pathAttr)
-  var CAMPAIGN = attr('data-campaign', '')
+  var CAMPAIGN = attr('data-campaign', '') || null
+  var PARTNER = attr('data-partner', '') || null
   var POLICY = attr('data-policy-version', 'v1')
   var URL_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ttclid', 'sccid']
   var FORM_FIELDS = ['email', 'phone', 'first_name', 'last_name', 'age_range', 'gender', 'city']
@@ -156,11 +162,12 @@
   var scanResolve
   var scanDone = new Promise(function (r) { scanResolve = r })
   function sendScan(hints) {
-    if (!CAMPAIGN) return scanResolve()
+    if (!CAMPAIGN && !PARTNER && !bid) return scanResolve()
     var req = send('/scan', {
       scan_id: ctx.scan_id,
       visitor_id: visitorId,
       campaign: CAMPAIGN,
+      partner: PARTNER,
       bid: bid,
       offer_variant: variant,
       scan_number: Math.max(scanNumber, 1),
@@ -241,6 +248,7 @@
     var marketing = !!fields.consent_marketing
     var body = {
       campaign: fields.campaign || CAMPAIGN,
+      partner: PARTNER,
       bid: bid,
       scan_id: ctx.scan_id,
       visitor_id: visitorId,
@@ -415,10 +423,10 @@
     store('sessionStorage', 'retrgtr_dlseq', String(dlSeq))
   }
   function flushDataLayer(beacon) {
-    while (dlQueue.length && CAMPAIGN) {
+    while (dlQueue.length && (CAMPAIGN || PARTNER || bid)) {
       var batch = dlQueue.splice(0, 50)
       dlSent += batch.length
-      send('/datalayer', { scan_id: ctx.scan_id, visitor_id: visitorId, campaign: CAMPAIGN, consent: { analytics: true }, events: batch }, beacon)
+      send('/datalayer', { scan_id: ctx.scan_id, visitor_id: visitorId, campaign: CAMPAIGN, partner: PARTNER, consent: { analytics: true }, events: batch }, beacon)
     }
   }
   if (DATALAYER) {

@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { query } from '../db.js'
 import { writeEvents, writeEvent } from '../lib/events.js'
-import { clientUserAgent, isBot, rateLimit, viaSgtm } from '../lib/request.js'
+import { clientUserAgent, isBot, rateLimit, requestOrigin, viaSgtm } from '../lib/request.js'
+import { resolveTarget } from '../lib/targets.js'
 import { dataLayerSchema, engagementSchema, scanSchema } from '../lib/schemas.js'
 import { scrubDataLayer } from '../lib/scrub.js'
 
@@ -21,12 +22,8 @@ ingestRoutes.post('/scan', async (c) => {
   const ua = clientUserAgent(c)
   const bot = isBot(ua)
 
-  const [target] = await query<{ campaign_id: string; placement_id: string | null }>(
-    `SELECT cp.id AS campaign_id, pl.id AS placement_id
-       FROM campaigns cp LEFT JOIN placements pl ON pl.campaign_id = cp.id AND pl.code = $2
-      WHERE cp.slug = $1 AND cp.status = 'active'`,
-    [b.campaign, b.bid ?? null],
-  )
+  // Unknown campaign / partner, or a website the partner hasn't registered: accept silently.
+  const target = await resolveTarget(b, requestOrigin(c))
   if (!target) return c.body(null, 202)
 
   const ctx = b.context

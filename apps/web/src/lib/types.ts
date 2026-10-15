@@ -12,7 +12,9 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 
 export interface Partner {
   id: string
+  key: string
   name: string
+  allowed_origins: string[]
   contact_email: string | null
   notes: string | null
   campaign_count: number

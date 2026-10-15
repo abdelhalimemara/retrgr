@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useSearchParams } from 'react-router-dom'
 import { API_URL, useApi } from '@/lib/api'
-import type { Campaign } from '@/lib/types'
+import type { Partner } from '@/lib/types'
 
 function CodeBlock({ code }: { code: string }) {
   return (
@@ -32,9 +33,10 @@ function CodeBlock({ code }: { code: string }) {
 }
 
 export default function CollectorPage() {
-  const { data: campaigns } = useApi<Campaign[]>('/admin/campaigns')
-  const [slug, setSlug] = useState('')
-  const campaign = slug || campaigns?.[0]?.slug || 'your-campaign-slug'
+  const { data: partners } = useApi<Partner[]>('/admin/partners')
+  const [params] = useSearchParams()
+  const [picked, setPicked] = useState(params.get('partner') ?? '')
+  const partner = partners?.find((p) => p.id === picked) ?? partners?.[0]
   const sgtm = import.meta.env.VITE_COLLECT_URL as string | undefined
   const endpoint = sgtm ? sgtm.replace(/\/retrgtr\/?$/, '') : API_URL || window.location.origin
   const path = sgtm ? '/retrgtr' : '/api/public'
@@ -42,7 +44,7 @@ export default function CollectorPage() {
   const tag = `<script src="${window.location.origin}/retrgtr.js"
         data-endpoint="${endpoint}"
         data-path="${path}"
-        data-campaign="${campaign}"
+        data-partner="${partner?.key ?? 'PARTNER-KEY'}"
         data-policy-version="v1"
         data-marketing-consent="checkbox" async></script>`
 
@@ -58,19 +60,19 @@ export default function CollectorPage() {
     <>
       <PageHeader
         title="Collector setup"
-        description="Install the Retrgtr collector through Google Tag Manager on partner landing pages."
+        description="Each partner adds one snippet to their own GTM. All partners share the central Retrgtr server container."
       />
 
       <div className="mb-6 grid max-w-xs gap-2">
-        <Label>Campaign</Label>
-        <Select value={campaign} onValueChange={setSlug}>
+        <Label>Partner</Label>
+        <Select value={partner?.id ?? ''} onValueChange={setPicked}>
           <SelectTrigger className="w-full">
-            <SelectValue placeholder="Choose a campaign" />
+            <SelectValue placeholder="Choose a partner" />
           </SelectTrigger>
           <SelectContent>
-            {campaigns?.map((c) => (
-              <SelectItem key={c.id} value={c.slug}>
-                {c.name}
+            {partners?.map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.name}
               </SelectItem>
             ))}
           </SelectContent>
@@ -82,9 +84,11 @@ export default function CollectorPage() {
           <CardHeader>
             <CardTitle>1. GTM Custom HTML tag</CardTitle>
             <CardDescription>
-              In GTM: Tags → New → Custom HTML, trigger on the landing page (Page View). Under Advanced Settings → Consent
-              Settings, require <code>analytics_storage</code> so the collector only loads after your Consent Mode v2 banner
-              grants it. {sgtm ? 'Events go through your server-side GTM container.' : 'Set VITE_COLLECT_URL to route events through sGTM.'}
+              The partner adds this in their own GTM: Tags → New → Custom HTML, trigger All Pages (or the landing pages).
+              Under Advanced Settings → Consent Settings, require <code>analytics_storage</code> so it only loads after their
+              Consent Mode v2 banner grants it. The campaign comes from the billboard code (<code>bid</code>) in the QR link,
+              otherwise the partner’s active campaign. Data is only accepted from the partner’s registered websites
+              {partner && !partner.allowed_origins.length ? ' (none registered yet — add them on the Partners page)' : ''}.
             </CardDescription>
           </CardHeader>
           <CardContent>
