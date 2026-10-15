@@ -139,6 +139,17 @@ Firebase ID token from an allow-listed email.
    `manifest.csv` for the print vendor.
 3. **Partners → Snippet.** Send the snippet to the partner. They add it in their GTM as a Custom
    HTML tag on All Pages, with Consent Settings requiring `analytics_storage`.
+   **If the client already has their own QR codes and landing page**, the snippet still collects
+   there. To attribute billboards, set each placement up in one of these ways:
+   - **Matching rule.** Their QR URLs already differ per billboard, e.g. `?utm_content=kfr` or
+     `/riyadh-offer`. Set "URL parameter = value" or "path starts with". The collector sends the
+     landing path and query, with personal-looking keys and values removed, and the API maps the
+     visit to the billboard.
+   - **Redirect link.** Their QR is dynamic or can be reprinted. Set the client landing page on the
+     placement and point the QR at `https://<dashboard>/q/<code>`. It redirects with `bid` + UTMs
+     and counts QR opens per billboard. The count is a plain daily number with no IP or cookie.
+   - **Neither.** Billboards can't be told apart, so data is attributed to the partner's active
+     campaign as a whole.
 4. Leads appear under Customers and Attribution. On Attribution, **Credit each lead to** sets how
    leads are counted per billboard:
    - every billboard the person scanned (shared credit);

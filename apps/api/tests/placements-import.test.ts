@@ -27,7 +27,7 @@ describe('placement CSV import', () => {
 
   it('produces rows the API accepts from the template', () => {
     const { rows } = placementsFromCsv(PLACEMENT_CSV_TEMPLATE)
-    expect(rows).toHaveLength(2)
+    expect(rows).toHaveLength(4)
     for (const r of rows) expect(placementSchema.safeParse({ ...r, campaign_id: '00000000-0000-4000-8000-000000000001' }).success).toBe(true)
   })
 

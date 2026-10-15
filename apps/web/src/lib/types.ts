@@ -148,6 +148,10 @@ export interface Placement {
   latitude: string | null
   longitude: string | null
   cost_sar: string | null
+  match_param: string | null
+  match_value: string | null
+  match_path: string | null
+  destination_url: string | null
 }
 
 export interface PlacementScore {
@@ -159,6 +163,7 @@ export interface PlacementScore {
   format: string | null
   campaign_name: string
   cost_sar: number | null
+  qr_opens: number
   scans: number
   unique_scanners: number
   repeat_scans: number
@@ -171,7 +176,7 @@ export interface PlacementScore {
 }
 
 export interface Attribution {
-  totals: { scans: number; unique_scanners: number; leads: number; unattributed_scans: number }
+  totals: { scans: number; unique_scanners: number; leads: number; unattributed_scans: number; qr_opens: number }
   placements: PlacementScore[]
   hourly: { hour: number; scans: number }[]
 }

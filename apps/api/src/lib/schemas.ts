@@ -31,6 +31,16 @@ export const captureContextSchema = z
 const slug = z.string().regex(/^[a-z0-9-]{3,64}$/)
 /** Public partner key from the collector snippet (data-partner). */
 const partnerKey = z.string().regex(/^[a-z0-9]{6,32}$/)
+/** Landing-page path + query parameters, sent so client-owned QR URLs can be matched to a billboard. */
+export const pageSchema = z
+  .object({
+    path: z.string().max(300).optional().nullable(),
+    query: z.record(z.string().max(64), z.string().max(200)).optional().nullable()
+      .refine((q) => !q || Object.keys(q).length <= 30, 'Too many parameters'),
+  })
+  .optional()
+  .nullable()
+
 const hasTarget = (v: { campaign?: string | null; partner?: string | null; bid?: string | null }) =>
   !!(v.campaign || v.partner || v.bid)
 const placementCode = z.string().regex(/^[a-z0-9-]{2,40}$/)
@@ -48,6 +58,7 @@ export const scanSchema = z.object({
   prior_bids: z.array(placementCode).max(50).default([]),
   consent: z.object({ analytics: z.literal(true), policy_version: z.string().max(32) }),
   context: captureContextSchema.default({}),
+  page: pageSchema,
   device: z
     .object({
       os: optText(40),
@@ -180,7 +191,17 @@ export const placementSchema = z.object({
   latitude: z.number().min(-90).max(90).optional().nullable(),
   longitude: z.number().min(-180).max(180).optional().nullable(),
   cost_sar: z.number().min(0).max(1e10).optional().nullable(),
-})
+  // Client-owned QR codes: map their URL to this billboard by a query parameter or a path…
+  match_param: z.string().trim().regex(/^[A-Za-z0-9_.-]{1,64}$/, 'Letters, digits, _ . - only').optional().nullable(),
+  match_value: z.string().trim().min(1).max(200).optional().nullable(),
+  match_path: z.string().trim().regex(/^\/\S{0,299}$/, 'Must start with /').optional().nullable(),
+  // …or send the QR through a redirect link to the client's landing page.
+  destination_url: z
+    .url({ protocol: /^https?$/ })
+    .max(2000)
+    .optional()
+    .nullable(),
+}).refine((v) => !v.match_param === !v.match_value, { message: 'Set both the parameter and its value', path: ['match_value'] })
 
 export const segmentFiltersSchema = z.object({
   campaignIds: z.array(z.uuid()).max(200).optional(),

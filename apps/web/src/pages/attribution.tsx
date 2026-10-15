@@ -122,6 +122,7 @@ export default function AttributionPage() {
           <TableHeader>
             <TableRow>
               <TableHead>Placement</TableHead>
+              <TableHead className="text-right">QR opens</TableHead>
               <TableHead className="text-right">Scans</TableHead>
               <TableHead className="text-right">Unique</TableHead>
               <TableHead className="text-right">Repeat</TableHead>
@@ -143,6 +144,7 @@ export default function AttributionPage() {
                     {p.district && ` · ${p.district}`}
                   </div>
                 </TableCell>
+                <TableCell className="text-right tabular-nums">{p.qr_opens ? p.qr_opens.toLocaleString() : '—'}</TableCell>
                 <TableCell className="text-right tabular-nums">{p.scans.toLocaleString()}</TableCell>
                 <TableCell className="text-right tabular-nums">{p.unique_scanners.toLocaleString()}</TableCell>
                 <TableCell className="text-right tabular-nums">{p.repeat_scans.toLocaleString()}</TableCell>
@@ -156,7 +158,7 @@ export default function AttributionPage() {
             ))}
             {data?.placements.length === 0 && (
               <TableRow>
-                <TableCell colSpan={10} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={11} className="h-24 text-center text-muted-foreground">
                   No placements yet. Add them from Campaigns → placements.
                 </TableCell>
               </TableRow>
@@ -165,7 +167,8 @@ export default function AttributionPage() {
         </Table>
       </Card>
       <p className="mt-2 text-xs text-muted-foreground">
-        {MODELS[model].note}
+        {MODELS[model].note} QR opens are counted for redirect links only (before any consent); scans are visitors who
+        accepted analytics.
         {!!totals?.unattributed_scans && ` ${totals.unattributed_scans.toLocaleString()} scans had no billboard code.`}
       </p>
 

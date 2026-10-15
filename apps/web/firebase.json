@@ -7,6 +7,13 @@
     ],
     "rewrites": [
       {
+        "source": "/q/**",
+        "run": {
+          "serviceId": "retrgtr-api",
+          "region": "me-central1"
+        }
+      },
+      {
         "source": "/assets/**",
         "destination": "/__missing-asset"
       },
@@ -66,6 +73,19 @@
           {
             "key": "Referrer-Policy",
             "value": "strict-origin-when-cross-origin"
+          }
+        ]
+      },
+      {
+        "source": "/q/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-store"
+          },
+          {
+            "key": "Referrer-Policy",
+            "value": "no-referrer"
           }
         ]
       }

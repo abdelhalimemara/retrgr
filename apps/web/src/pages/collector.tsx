@@ -119,6 +119,40 @@ export default function CollectorPage() {
           </CardContent>
         </Card>
 
+        <Card className="min-w-0 xl:col-span-2">
+          <CardHeader>
+            <CardTitle>3. Which billboard? When the client already has QR codes and a landing page</CardTitle>
+            <CardDescription>
+              The snippet collects on the client’s page either way. To tell billboards apart, set each placement up (Campaigns →
+              placements) in one of these ways:
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 text-sm md:grid-cols-3">
+            <div>
+              <div className="font-medium">Their QR links already differ per billboard</div>
+              <p className="text-muted-foreground">
+                e.g. <code>?utm_content=kfr</code> or <code>/riyadh-offer</code>. Add a matching rule (URL parameter = value, or
+                path starts with). Nothing changes on the client’s side.
+              </p>
+            </div>
+            <div>
+              <div className="font-medium">Their QR is dynamic, or can be reprinted</div>
+              <p className="text-muted-foreground">
+                Set the client landing page on the placement and point the QR at its redirect link (
+                <code>{window.location.origin}/q/CODE</code>). It adds the billboard code and counts QR opens, including people
+                who never accept the consent banner.
+              </p>
+            </div>
+            <div>
+              <div className="font-medium">One QR for every billboard</div>
+              <p className="text-muted-foreground">
+                Billboards can’t be told apart from the link, so scans and leads are attributed to the partner’s active
+                campaign as a whole (shown as “no billboard code” on Attribution).
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>What gets collected</CardTitle>

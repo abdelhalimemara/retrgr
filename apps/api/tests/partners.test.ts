@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeOrigin } from '../src/lib/normalize.js'
-import { captureSchema, partnerSchema, scanSchema } from '../src/lib/schemas.js'
+import { captureSchema, partnerSchema, placementSchema, scanSchema } from '../src/lib/schemas.js'
 import { originAllowed } from '../src/lib/targets.js'
 
 describe('partner websites', () => {
@@ -41,5 +41,20 @@ describe('partner-level snippet payloads', () => {
     const lead = { email: 'a@b.co', consent: { marketing: true, policy_version: 'v1' } }
     expect(captureSchema.safeParse({ ...lead, partner: 'abc123def456' }).success).toBe(true)
     expect(captureSchema.safeParse(lead).success).toBe(false)
+  })
+})
+
+describe('client-owned QR placements', () => {
+  const base = { campaign_id: '00000000-0000-4000-8000-000000000001', code: 'mall-03', name: 'Mall entrance' }
+  it('accepts a parameter rule, a path rule or a redirect destination', () => {
+    expect(placementSchema.safeParse({ ...base, match_param: 'utm_content', match_value: 'mall3' }).success).toBe(true)
+    expect(placementSchema.safeParse({ ...base, match_path: '/riyadh-offer' }).success).toBe(true)
+    expect(placementSchema.safeParse({ ...base, destination_url: 'https://brand.sa/offer?x=1' }).success).toBe(true)
+  })
+  it('rejects half rules, bad paths and non-web destinations', () => {
+    expect(placementSchema.safeParse({ ...base, match_param: 'utm_content' }).success).toBe(false)
+    expect(placementSchema.safeParse({ ...base, match_path: 'riyadh' }).success).toBe(false)
+    expect(placementSchema.safeParse({ ...base, destination_url: 'javascript:alert(1)' }).success).toBe(false)
+    expect(placementSchema.safeParse({ ...base, match_param: 'bad key!', match_value: 'x' }).success).toBe(false)
   })
 })

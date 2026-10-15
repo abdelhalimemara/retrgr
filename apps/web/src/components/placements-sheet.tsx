@@ -13,15 +13,24 @@ import { PLACEMENT_CSV_TEMPLATE, placementsFromCsv } from '@/lib/csv'
 import { zipFiles } from '@/lib/zip'
 import { sar, type Campaign, type Placement } from '@/lib/types'
 
-/** QR target for one billboard. `bid` drives placement attribution; UTMs keep GA4 consistent. */
-export function placementUrl(campaignSlug: string, code: string) {
-  const qs = new URLSearchParams({ bid: code, utm_source: 'ooh', utm_medium: 'qr', utm_campaign: campaignSlug })
+type QrTarget = Pick<Placement, 'code' | 'destination_url' | 'match_param' | 'match_path'>
+
+/**
+ * What the billboard's QR encodes. Our hosted page gets the bid directly; a client landing
+ * page goes through the short redirect link, which adds the bid and counts the open.
+ */
+export function placementUrl(campaignSlug: string, p: QrTarget) {
+  if (p.destination_url) return `${window.location.origin}/q/${p.code}`
+  const qs = new URLSearchParams({ bid: p.code, utm_source: 'ooh', utm_medium: 'qr', utm_campaign: campaignSlug })
   return `${window.location.origin}/c/${campaignSlug}?${qs}`
 }
 
+/** The client prints their own QR and we only match its URL — there is nothing for us to generate. */
+const clientQr = (p: QrTarget) => !p.destination_url && !!(p.match_param || p.match_path)
+
 // High error correction + generous size so the code survives print scaling and partial occlusion.
-const qrSvg = (campaignSlug: string, code: string) =>
-  QRCode.toString(placementUrl(campaignSlug, code), { type: 'svg', errorCorrectionLevel: 'H', margin: 2, width: 1200 })
+const qrSvg = (campaignSlug: string, p: QrTarget) =>
+  QRCode.toString(placementUrl(campaignSlug, p), { type: 'svg', errorCorrectionLevel: 'H', margin: 2, width: 1200 })
 
 function save(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -29,22 +38,23 @@ function save(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
-async function downloadQr(campaignSlug: string, code: string) {
-  save(new Blob([await qrSvg(campaignSlug, code)], { type: 'image/svg+xml' }), `qr-${campaignSlug}-${code}.svg`)
+async function downloadQr(campaignSlug: string, p: QrTarget) {
+  save(new Blob([await qrSvg(campaignSlug, p)], { type: 'image/svg+xml' }), `qr-${campaignSlug}-${p.code}.svg`)
 }
 
 const csvCell = (v: unknown) => (/[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''))
 
 /** Every placement's QR as SVG, plus a manifest the print vendor can match files to sites with. */
-async function downloadAllQr(campaignSlug: string, placements: Placement[]) {
+async function downloadAllQr(campaignSlug: string, all: Placement[]) {
   const enc = new TextEncoder()
+  const placements = all.filter((p) => !clientQr(p))
   const files = await Promise.all(
-    placements.map(async (p) => ({ name: `qr-${campaignSlug}-${p.code}.svg`, data: enc.encode(await qrSvg(campaignSlug, p.code)) })),
+    placements.map(async (p) => ({ name: `qr-${campaignSlug}-${p.code}.svg`, data: enc.encode(await qrSvg(campaignSlug, p)) })),
   )
   const manifest = [
     'file,code,name,city,district,url',
     ...placements.map((p) =>
-      [`qr-${campaignSlug}-${p.code}.svg`, p.code, p.name, p.city, p.district, placementUrl(campaignSlug, p.code)].map(csvCell).join(','),
+      [`qr-${campaignSlug}-${p.code}.svg`, p.code, p.name, p.city, p.district, placementUrl(campaignSlug, p)].map(csvCell).join(','),
     ),
   ].join('\n')
   files.push({ name: 'manifest.csv', data: enc.encode('\uFEFF' + manifest) })
@@ -99,6 +109,10 @@ export function PlacementsSheet({ campaign, onClose }: { campaign: Campaign | nu
         cost_sar: num('cost_sar'),
         latitude: num('latitude'),
         longitude: num('longitude'),
+        destination_url: f.get('destination_url') || null,
+        match_param: f.get('match_param') || null,
+        match_value: f.get('match_value') || null,
+        match_path: f.get('match_path') || null,
       })
       toast.success('Placement added')
       setFormKey((k) => k + 1)
@@ -166,11 +180,21 @@ export function PlacementsSheet({ campaign, onClose }: { campaign: Campaign | nu
                   {p.district && ` · ${p.district}`}
                   {p.cost_sar && ` · ${sar(Number(p.cost_sar))}`}
                 </div>
+                {p.destination_url && (
+                  <div className="truncate text-xs text-muted-foreground">Redirect → {p.destination_url}</div>
+                )}
+                {(p.match_param || p.match_path) && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    Client QR: {p.match_param ? `${p.match_param}=${p.match_value}` : `path starts with ${p.match_path}`}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0">
-                <Button variant="ghost" size="icon" aria-label="Download QR code" onClick={() => downloadQr(campaign!.slug, p.code)}>
-                  <Download />
-                </Button>
+                {!clientQr(p) && (
+                  <Button variant="ghost" size="icon" aria-label="Download QR code" onClick={() => downloadQr(campaign!.slug, p)}>
+                    <Download />
+                  </Button>
+                )}
                 <Button variant="ghost" size="icon" aria-label="Delete placement" onClick={() => remove(p.id)}>
                   <Trash2 />
                 </Button>
@@ -215,6 +239,29 @@ export function PlacementsSheet({ campaign, onClose }: { campaign: Campaign | nu
           <div className="grid gap-2">
             <Label htmlFor="pl-lng">Longitude</Label>
             <Input id="pl-lng" name="longitude" type="number" step="any" />
+          </div>
+          <div className="col-span-2 mt-2 grid gap-1">
+            <div className="text-sm font-medium">Client-owned QR or landing page (optional)</div>
+            <p className="text-xs text-muted-foreground">
+              Leave empty when Retrgtr prints the QR. If the client prints it: either give their landing page (their QR
+              must open our redirect link), or describe what in their QR URL identifies this billboard.
+            </p>
+          </div>
+          <div className="col-span-2 grid gap-2">
+            <Label htmlFor="pl-dest">Client landing page (redirect link)</Label>
+            <Input id="pl-dest" name="destination_url" type="url" placeholder="https://brand.sa/offer" />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="pl-mp">URL parameter</Label>
+            <Input id="pl-mp" name="match_param" placeholder="utm_content" />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="pl-mv">equals</Label>
+            <Input id="pl-mv" name="match_value" placeholder="kfr" />
+          </div>
+          <div className="col-span-2 grid gap-2">
+            <Label htmlFor="pl-mpath">…or URL path starts with</Label>
+            <Input id="pl-mpath" name="match_path" placeholder="/riyadh-offer" pattern="/\S*" />
           </div>
           <Button type="submit" className="col-span-2">
             <Plus /> Add placement

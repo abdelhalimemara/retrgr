@@ -157,6 +157,22 @@
     }
   }
 
+  // ---- landing page path + query, for client-owned QR codes without a bid ----
+  // Matched server-side against the billboard rules (e.g. utm_content=kfr, path /riyadh-offer).
+  // Personal-looking keys/values and click IDs are never sent.
+  function landingPage() {
+    var skip = /mail|phone|mobile|(^|_)tel($|_)|(^|_)(first|last|full|user)?_?name$|address|token|pass|secret|^code$|otp|session|^(fbclid|gclid|ttclid|sccid|msclkid|_ga|_gl)$/i
+    var q = {}
+    var n = 0
+    qs.forEach(function (v, k) {
+      if (n >= 30 || skip.test(k) || k.length > 64 || !v) return
+      if (/@/.test(v) || v.replace(/\D/g, '').length >= 9) return
+      q[k] = v.slice(0, 200)
+      n++
+    })
+    return { path: location.pathname.slice(0, 300), query: q }
+  }
+
   // ---- scan (once per session) ----
   // Settles once the scan is recorded, so a fast lead can be linked to its billboard.
   var scanResolve
@@ -174,9 +190,21 @@
       prior_bids: priorBids.filter(function (b) { return b !== bid }),
       consent: { analytics: true, policy_version: POLICY },
       context: context(),
+      page: bid ? null : landingPage(),
       device: device(hints || {}),
     })
-    Promise.resolve(req).then(scanResolve, scanResolve)
+    // A client-QR rule matched → the API returns the billboard code; keep it for this session.
+    Promise.resolve(req)
+      .then(function (res) {
+        if (!res || !res.ok || !/json/.test(res.headers.get('content-type') || '')) return
+        return res.json().then(function (j) {
+          if (!j || !j.bid || bid) return
+          bid = ctx.bid = String(j.bid)
+          store('sessionStorage', CTX_KEY, JSON.stringify(ctx))
+          if (priorBids.indexOf(bid) === -1) store('localStorage', 'retrgtr_bids', JSON.stringify(priorBids.concat(bid).slice(-50)))
+        })
+      })
+      .then(scanResolve, scanResolve)
     push({ event: 'ooh_scan', ooh_bid: bid, ooh_scan_number: scanNumber, ooh_offer_variant: variant })
   }
   if (isNewSession) {

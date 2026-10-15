@@ -56,7 +56,7 @@ ingestRoutes.post('/scan', async (c) => {
       scan_ts: new Date().toISOString(),
       campaign_id: target.campaign_id,
       placement_id: target.placement_id,
-      bid: b.bid ?? null,
+      bid: b.bid ?? target.placement_code,
       offer_variant: b.offer_variant ?? null,
       scan_number: b.scan_number,
       prior_bids: b.prior_bids,
@@ -68,6 +68,8 @@ ingestRoutes.post('/scan', async (c) => {
       ...b.device,
     })
   }
+  // Matched by a client-QR rule: tell the collector the billboard code for the rest of the session.
+  if (!b.bid && target.placement_code) return c.json({ bid: target.placement_code }, 202)
   return c.body(null, 202)
 })
 

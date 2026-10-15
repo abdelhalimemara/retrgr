@@ -37,13 +37,20 @@ const HEADERS: Record<string, string> = {
   latitude: 'latitude', lat: 'latitude',
   longitude: 'longitude', lng: 'longitude', lon: 'longitude', long: 'longitude',
   cost_sar: 'cost_sar', cost: 'cost_sar', 'cost (sar)': 'cost_sar', flight_cost: 'cost_sar',
+  // Client-owned QR codes
+  destination_url: 'destination_url', destination: 'destination_url', landing_page: 'destination_url',
+  match_param: 'match_param', match_value: 'match_value', match_path: 'match_path',
 }
 const NUMERIC = new Set(['latitude', 'longitude', 'cost_sar'])
 
+// Rows 1-2: our QR codes. Row 3: client's own QR whose URL has utm_content=mall3.
+// Row 4: client's landing page reached through our redirect link.
 export const PLACEMENT_CSV_TEMPLATE =
-  'code,name,format,city,district,latitude,longitude,cost_sar\n' +
-  'kfr-01,King Fahd Rd unipole,Unipole,Riyadh,Al Olaya,24.7136,46.6753,45000\n' +
-  'olaya-02,Olaya St digital screen,Digital screen,Riyadh,Al Olaya,24.6950,46.6850,30000\n'
+  'code,name,format,city,district,latitude,longitude,cost_sar,destination_url,match_param,match_value,match_path\n' +
+  'kfr-01,King Fahd Rd unipole,Unipole,Riyadh,Al Olaya,24.7136,46.6753,45000,,,,\n' +
+  'olaya-02,Olaya St digital screen,Digital screen,Riyadh,Al Olaya,24.6950,46.6850,30000,,,,\n' +
+  'mall-03,Mall entrance (client QR),Backlit,Riyadh,Al Malqa,,,12000,,utm_content,mall3,\n' +
+  'jed-04,Corniche screen (redirect),Digital screen,Jeddah,Corniche,,,20000,https://brand.example/offer,,,\n'
 
 /**
  * Turns CSV text into placement rows for /admin/placements/bulk. Codes are lowercased,

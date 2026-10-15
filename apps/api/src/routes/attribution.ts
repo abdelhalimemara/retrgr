@@ -31,13 +31,18 @@ const placementParams = (b: z.infer<typeof placementSchema>) => [
   b.latitude ?? null,
   b.longitude ?? null,
   b.cost_sar ?? null,
+  b.match_param ?? null,
+  b.match_value ?? null,
+  b.match_path ?? null,
+  b.destination_url ?? null,
 ]
 
 attributionRoutes.post('/placements', async (c) => {
   const b = placementSchema.parse(await c.req.json())
   const [row] = await query(
-    `INSERT INTO placements (campaign_id, code, name, format, city, district, latitude, longitude, cost_sar)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO placements (campaign_id, code, name, format, city, district, latitude, longitude, cost_sar,
+       match_param, match_value, match_path, destination_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
     placementParams(b),
   )
   await audit(c.get('actor'), 'create', 'placement', row.id)
@@ -74,8 +79,9 @@ attributionRoutes.post('/placements/bulk', async (c) => {
     const out = []
     for (const b of valid) {
       const { rows: [row] } = await db.query(
-        `INSERT INTO placements (campaign_id, code, name, format, city, district, latitude, longitude, cost_sar)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        `INSERT INTO placements (campaign_id, code, name, format, city, district, latitude, longitude, cost_sar,
+           match_param, match_value, match_path, destination_url)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
         placementParams(b),
       )
       out.push(row)
@@ -90,8 +96,9 @@ attributionRoutes.put('/placements/:id', async (c) => {
   const b = placementSchema.parse(await c.req.json())
   const [row] = await query(
     `UPDATE placements SET campaign_id = $1, code = $2, name = $3, format = $4, city = $5, district = $6,
-       latitude = $7, longitude = $8, cost_sar = $9
-     WHERE id = $10 RETURNING *`,
+       latitude = $7, longitude = $8, cost_sar = $9, match_param = $10, match_value = $11, match_path = $12,
+       destination_url = $13
+     WHERE id = $14 RETURNING *`,
     [...placementParams(b), z.uuid().parse(c.req.param('id'))],
   )
   if (!row) throw new HTTPException(404)
@@ -143,6 +150,9 @@ attributionRoutes.get('/attribution', async (c) => {
               count(s.id)::int AS scans,
               count(DISTINCT s.visitor_id)::int AS unique_scanners,
               count(s.id) FILTER (WHERE s.scan_number > 1)::int AS repeat_scans,
+              -- Redirect-link opens: everyone who scanned, before any consent banner.
+              (SELECT coalesce(sum(o.opens), 0)::int FROM qr_opens o
+                WHERE o.placement_id = pl.id AND ($2::date IS NULL OR o.day >= $2::date) AND ($3::date IS NULL OR o.day <= $3::date)) AS qr_opens,
               CASE WHEN $4 = 'multi' THEN count(DISTINCT s.customer_id)::int
                    ELSE (SELECT count(*)::int FROM credited cr WHERE cr.placement_id = pl.id) END AS leads,
               round(avg(s.dwell_seconds))::int AS avg_dwell_seconds,
@@ -163,7 +173,10 @@ attributionRoutes.get('/attribution', async (c) => {
     query(
       `SELECT count(*)::int AS scans, count(DISTINCT s.visitor_id)::int AS unique_scanners,
               count(DISTINCT s.customer_id)::int AS leads,
-              count(*) FILTER (WHERE s.placement_id IS NULL)::int AS unattributed_scans
+              count(*) FILTER (WHERE s.placement_id IS NULL)::int AS unattributed_scans,
+              (SELECT coalesce(sum(o.opens), 0)::int FROM qr_opens o JOIN placements pl ON pl.id = o.placement_id
+                WHERE ($1::uuid IS NULL OR pl.campaign_id = $1) AND ($2::date IS NULL OR o.day >= $2::date)
+                  AND ($3::date IS NULL OR o.day <= $3::date)) AS qr_opens
          FROM scans s WHERE ${scope}`,
       params,
     ),

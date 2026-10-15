@@ -11,6 +11,7 @@ import { audienceRoutes } from './routes/audiences.js'
 import { catalogRoutes } from './routes/catalog.js'
 import { customerRoutes } from './routes/customers.js'
 import { ingestRoutes } from './routes/ingest.js'
+import { redirectRoutes } from './routes/redirect.js'
 import { publicRoutes } from './routes/public.js'
 
 export const app = new Hono()
@@ -25,6 +26,8 @@ app.get('/healthz', (c) => c.json({ ok: true }))
 // Public endpoints are called from landing pages (collector / hosted page) or the sGTM
 // Retrgtr Client — any origin, no credentials.
 app.use('/api/public/*', cors({ origin: '*', allowMethods: ['GET', 'POST'] }))
+// Short QR redirect links (also served as https://<dashboard>/q/:code via Firebase Hosting).
+app.route('/q', redirectRoutes)
 app.route('/api/public', publicRoutes)
 app.route('/api/public', ingestRoutes)
 
