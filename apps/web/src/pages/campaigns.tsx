@@ -196,7 +196,7 @@ function CampaignDialog({
             </div>
             <div className="grid gap-2">
               <Label htmlFor="slug">URL slug</Label>
-              <Input id="slug" name="slug" required pattern="[a-z0-9-]{3,64}" placeholder="riyadh-blvd-q4" defaultValue={campaign?.slug} />
+              <Input id="slug" name="slug" required pattern="[a-z0-9\-]{3,64}" placeholder="riyadh-blvd-q4" defaultValue={campaign?.slug} />
             </div>
             <div className="grid gap-2">
               <Label htmlFor="consent_version">Consent policy version</Label>

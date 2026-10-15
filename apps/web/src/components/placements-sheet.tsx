@@ -99,7 +99,7 @@ export function PlacementsSheet({ campaign, onClose }: { campaign: Campaign | nu
           </div>
           <div className="grid gap-2">
             <Label htmlFor="pl-code">Code (bid)</Label>
-            <Input id="pl-code" name="code" required pattern="[a-z0-9-]{2,40}" placeholder="kfr-01" />
+            <Input id="pl-code" name="code" required pattern="[a-z0-9\-]{2,40}" placeholder="kfr-01" />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="pl-format">Format</Label>

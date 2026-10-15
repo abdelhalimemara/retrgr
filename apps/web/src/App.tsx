@@ -1,4 +1,4 @@
-import { lazy, Suspense, type ReactNode } from 'react'
+import { lazy, Suspense, type ComponentType, type ReactNode } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/app-layout'
 import { Toaster } from '@/components/ui/sonner'
@@ -9,15 +9,32 @@ import OptOutPage from '@/pages/optout'
 
 // Dashboard code (charts, tables, Firebase sign-in UI) is split out so the
 // public consent page stays light for people arriving from a QR code on mobile data.
-const AttributionPage = lazy(() => import('@/pages/attribution'))
-const CampaignsPage = lazy(() => import('@/pages/campaigns'))
-const CollectorPage = lazy(() => import('@/pages/collector'))
-const CustomersPage = lazy(() => import('@/pages/customers'))
-const ExportsPage = lazy(() => import('@/pages/exports'))
-const LoginPage = lazy(() => import('@/pages/login'))
-const OverviewPage = lazy(() => import('@/pages/overview'))
-const PartnersPage = lazy(() => import('@/pages/partners'))
-const SegmentsPage = lazy(() => import('@/pages/segments'))
+// A tab left open across a deploy asks for chunks that no longer exist; reload once
+// to pick up the new build instead of showing a blank page.
+const page = (load: () => Promise<{ default: ComponentType }>) =>
+  lazy(() =>
+    load().then(
+      (m) => {
+        sessionStorage.removeItem('retrgtr_chunk_reload')
+        return m
+      },
+      (err) => {
+        if (sessionStorage.getItem('retrgtr_chunk_reload')) throw err
+        sessionStorage.setItem('retrgtr_chunk_reload', '1')
+        window.location.reload()
+        return new Promise<never>(() => {})
+      },
+    ),
+  )
+const AttributionPage = page(() => import('@/pages/attribution'))
+const CampaignsPage = page(() => import('@/pages/campaigns'))
+const CollectorPage = page(() => import('@/pages/collector'))
+const CustomersPage = page(() => import('@/pages/customers'))
+const ExportsPage = page(() => import('@/pages/exports'))
+const LoginPage = page(() => import('@/pages/login'))
+const OverviewPage = page(() => import('@/pages/overview'))
+const PartnersPage = page(() => import('@/pages/partners'))
+const SegmentsPage = page(() => import('@/pages/segments'))
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
