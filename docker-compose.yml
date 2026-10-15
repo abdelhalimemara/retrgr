@@ -1,0 +1,14 @@
+# Local development database only. Production uses Cloud SQL (Postgres 16) in me-central2.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: retrgtr
+      POSTGRES_USER: retrgtr
+      POSTGRES_PASSWORD: retrgtr
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

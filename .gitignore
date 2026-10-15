@@ -1,0 +1,18 @@
+# Ruflo local secrets and runtime data
+.env
+.env.local
+.env.*.local
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+
+# Build / deps
+node_modules/
+dist/
+*.tsbuildinfo
+.swarm/
+ruvector.db
+*.bak-*
+
+# Local env (examples are committed)
+apps/api/.env

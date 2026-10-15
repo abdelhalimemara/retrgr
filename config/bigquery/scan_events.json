@@ -1,0 +1,202 @@
+[
+  {
+    "name": "scan_id",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "visitor_id",
+    "type": "STRING",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "scan_ts",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED"
+  },
+  {
+    "name": "campaign_id",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "placement_id",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "bid",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "offer_variant",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "scan_number",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "prior_bids",
+    "type": "STRING",
+    "mode": "REPEATED"
+  },
+  {
+    "name": "is_bot",
+    "type": "BOOLEAN",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "via_sgtm",
+    "type": "BOOLEAN",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "user_agent",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "policy_version",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "utm_source",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "utm_medium",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "utm_campaign",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "utm_content",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "utm_term",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "fbclid",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "gclid",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "ttclid",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "sccid",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "landing_url",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "referrer",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "device_type",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "language",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "timezone",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "os",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "os_version",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "model",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "browser",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "screen_w",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "screen_h",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "viewport_w",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "viewport_h",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "pixel_ratio",
+    "type": "FLOAT",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "orientation",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "connection_type",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "languages",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "touch_points",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  }
+]

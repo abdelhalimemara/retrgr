@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+.claude
+.claude-flow
+.swarm
+.agents
+ruvector.db

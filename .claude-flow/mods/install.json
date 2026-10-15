@@ -1,0 +1,20 @@
+{
+  "version": 2,
+  "installedAt": "2026-10-14T14:45:34.710Z",
+  "files": {
+    "/Users/abdelhalimemara/Desktop/Zain Studio/Zain-Tech/retargtr/.claude/settings.json": {
+      "plugins": [
+        "ruflo-mods@ruflo",
+        "ruflo-swarm@ruflo",
+        "ruflo-console@ruflo"
+      ],
+      "marketplace": true,
+      "env": true,
+      "claudeInstalled": [
+        "ruflo-mods@ruflo",
+        "ruflo-swarm@ruflo",
+        "ruflo-console@ruflo"
+      ]
+    }
+  }
+}
