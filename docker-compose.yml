@@ -1,4 +1,4 @@
-# Local development database only. Production uses Cloud SQL (Postgres 16) in me-central2.
+# Local development database only. Production uses Cloud SQL (Postgres 16) in me-central1 (Doha).
 services:
   db:
     image: postgres:16-alpine
