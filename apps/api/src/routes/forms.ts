@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth.js'
-import { query } from '../db.js'
+import { audit, query } from '../db.js'
 
 /**
  * Form abandonment analytics, per form and campaign: starts, submits, how far people get
@@ -71,4 +71,28 @@ formRoutes.get('/forms', async (c) => {
       }
     }),
   )
+})
+
+/**
+ * Partial leads: entries saved as typed on forms that disclose it (partner typed_notice).
+ * For follow-up only — never in segments or exports. Expire after 30 days. Viewing is audited.
+ */
+formRoutes.get('/partial-leads', async (c) => {
+  const q = rangeQuery.parse(c.req.query())
+  const rows = await query(
+    `SELECT pl.scan_id, pl.form_id, pl.email, pl.phone, pl.data, pl.notice_text, pl.created_at, pl.updated_at, pl.expires_at,
+            cp.name AS campaign_name, pa.name AS partner_name, plc.name AS placement_name
+       FROM partial_leads pl
+       JOIN scans s ON s.id = pl.scan_id
+       JOIN campaigns cp ON cp.id = s.campaign_id
+       JOIN partners pa ON pa.id = cp.partner_id
+       LEFT JOIN placements plc ON plc.id = s.placement_id
+      WHERE ($1::uuid IS NULL OR s.campaign_id = $1)
+        AND ($2::date IS NULL OR pl.created_at >= $2::date)
+        AND ($3::date IS NULL OR pl.created_at < $3::date + 1)
+      ORDER BY pl.updated_at DESC LIMIT 500`,
+    [q.campaign_id ?? null, q.from ?? null, q.to ?? null],
+  )
+  await audit(c.get('actor'), 'view', 'partial_leads', q.campaign_id, { count: rows.length })
+  return c.json(rows)
 })

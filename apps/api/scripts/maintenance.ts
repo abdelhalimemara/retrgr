@@ -1,4 +1,4 @@
-import { pool } from '../src/db.js'
+import { pool, query } from '../src/db.js'
 import { flushEventErasures } from '../src/lib/events.js'
 import { validateContacts } from '../src/lib/validation.js'
 
@@ -8,7 +8,9 @@ import { validateContacts } from '../src/lib/validation.js'
 async function main() {
   const erasures = await flushEventErasures()
   const validation = await validateContacts(Number(process.env.VALIDATION_BATCH ?? 500))
-  console.log(JSON.stringify({ erasures, validation }))
+  // 3. delete partial leads (entries saved as typed) older than 30 days.
+  const expired = await query('DELETE FROM partial_leads WHERE expires_at < now() RETURNING scan_id')
+  console.log(JSON.stringify({ erasures, validation, partial_leads_expired: expired.length }))
 }
 
 main()

@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { query } from '../db.js'
 import { writeEvents, writeEvent } from '../lib/events.js'
+import type { z } from 'zod'
 import { lookupIp } from '../lib/geoip.js'
 import { clientIp, clientUserAgent, isBot, rateLimit, requestOrigin, viaSgtm } from '../lib/request.js'
 import { resolveTarget } from '../lib/targets.js'
+import { config } from '../config.js'
+import { cleanName, normalizeEmail, normalizePhone } from '../lib/normalize.js'
 import { dataLayerSchema, engagementSchema, scanSchema } from '../lib/schemas.js'
+import { cleanFormExtras } from '../lib/scrub.js'
 import { scrubDataLayer } from '../lib/scrub.js'
 
 /**
@@ -13,6 +17,7 @@ import { scrubDataLayer } from '../lib/scrub.js'
  * unknown campaigns, so they can't be used to enumerate campaigns.
  */
 export const ingestRoutes = new Hono()
+type EngagementInput = z.infer<typeof engagementSchema>
 
 ingestRoutes.use('/scan', rateLimit({ windowMs: 60_000, max: 30 }))
 ingestRoutes.use('/engagement', rateLimit({ windowMs: 60_000, max: 60 }))
@@ -86,8 +91,10 @@ ingestRoutes.post('/scan', async (c) => {
       ...b.device,
     })
   }
-  // Matched by a client-QR rule: tell the collector the billboard code for the rest of the session.
-  if (!b.bid && target.placement_code) return c.json({ bid: target.placement_code }, 202)
+  // Tell the collector the billboard code matched by a client-QR rule, and whether this partner's
+  // form discloses "save as you type" (only then does it send entries before submit).
+  const reply = { bid: !b.bid ? target.placement_code : null, save_typed: !!target.typed_notice }
+  if (reply.bid || reply.save_typed) return c.json(reply, 202)
   return c.body(null, 202)
 })
 
@@ -116,7 +123,8 @@ ingestRoutes.post('/engagement', async (c) => {
       [b.scan_id, f.form_id, f.fields_total, f.fields_filled, f.last_field ?? null, f.submitted],
     )
   }
-  const { forms, ...rest } = b
+  if (b.partial) await savePartial(b.scan_id, b.partial)
+  const { forms, partial: _partial, ...rest } = b
   await writeEvent(
     'engagement_events',
     { ...rest, forms: forms.length ? JSON.stringify(forms) : null, event_ts: new Date().toISOString() },
@@ -178,4 +186,38 @@ export function commerceOf(name: string | null | undefined, data: unknown): { ki
   const raw = Number(d.ecommerce?.value ?? d.value ?? params?.value ?? 0)
   const value = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 10_000_000) : 0
   return { kind, value }
+}
+
+/**
+ * Disclosed "save as you type": stores entries only if the scan's partner has a typed_notice
+ * (shown above their form), the form wasn't already submitted, and there's a valid email or phone.
+ */
+async function savePartial(scanId: string, p: NonNullable<EngagementInput['partial']>) {
+  const [row] = await query<{ typed_notice: string | null; submitted: boolean }>(
+    `SELECT pa.typed_notice,
+            EXISTS (SELECT 1 FROM form_sessions fs WHERE fs.scan_id = s.id AND fs.form_id = $2 AND fs.submitted) AS submitted
+       FROM scans s JOIN campaigns cp ON cp.id = s.campaign_id JOIN partners pa ON pa.id = cp.partner_id
+      WHERE s.id = $1`,
+    [scanId, p.form_id],
+  )
+  if (!row?.typed_notice || row.submitted) return
+  const email = p.email ? normalizeEmail(p.email) : null
+  const phone = p.phone ? normalizePhone(p.phone, config.defaultCountry) : null
+  if (!email && !phone) return
+  const data = {
+    first_name: cleanName(p.first_name),
+    last_name: cleanName(p.last_name),
+    city: cleanName(p.city),
+    gender: p.gender,
+    age_range: p.age_range,
+    extra: cleanFormExtras(p.extra),
+  }
+  await query(
+    `INSERT INTO partial_leads (scan_id, form_id, email, phone, data, notice_text)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (scan_id, form_id) DO UPDATE SET email = COALESCE(EXCLUDED.email, partial_leads.email),
+       phone = COALESCE(EXCLUDED.phone, partial_leads.phone), data = EXCLUDED.data, notice_text = EXCLUDED.notice_text,
+       updated_at = now()`,
+    [scanId, p.form_id.slice(0, 120), email, phone, data, row.typed_notice],
+  )
 }

@@ -131,6 +131,9 @@ publicRoutes.post('/capture', async (c) => {
       ? (await db.query('SELECT id FROM scans WHERE id = $1', [body.scan_id])).rows[0]?.id ?? null
       : null
 
+    // Submitted: the entries saved as typed (if any) are replaced by this full lead.
+    if (linkedScan) await db.query('DELETE FROM partial_leads WHERE scan_id = $1', [linkedScan])
+
     // Server-side truth for form analytics: this form was submitted.
     if (linkedScan && body.form_id) {
       await db.query(
@@ -192,6 +195,8 @@ publicRoutes.post('/withdraw', async (c) => {
   const email = body.email ? normalizeEmail(body.email) : null
   const phone = body.phone ? normalizePhone(body.phone, config.defaultCountry) : null
 
+  // Opt-out also removes any entries saved as typed.
+  await query('DELETE FROM partial_leads WHERE email = $1 OR phone = $2', [email, phone])
   await query(
     `UPDATE consents SET withdrawn_at = now()
       WHERE withdrawn_at IS NULL

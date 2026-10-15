@@ -113,6 +113,21 @@ export const engagementSchema = z.object({
   abandon_event: z.boolean().default(false),
   // The site's Consent Mode ad_storage state, so sGTM ad tags only retarget with ad consent.
   ad_storage_granted: z.boolean().default(false),
+  // Entries saved as typed — only stored for partners with a typed_notice (checked server-side).
+  partial: z
+    .object({
+      form_id: z.string().trim().min(1).max(120),
+      email: z.string().trim().max(254).optional().nullable(),
+      phone: z.string().trim().max(32).optional().nullable(),
+      first_name: optText(100),
+      last_name: optText(100),
+      city: optText(100),
+      gender: z.unknown().optional().transform((v) => normalizeGender(v)),
+      age_range: z.unknown().optional().transform((v) => normalizeAgeRange(v)),
+      extra: z.record(z.string().max(80), z.string().max(500)).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
 })
 
 export const captureSchema = z
@@ -180,6 +195,8 @@ export const partnerSchema = z.object({
   marketing_basis: z.enum(['checkbox', 'form_notice']).default('checkbox'),
   marketing_notice: z.string().trim().min(20, 'Paste the full notice text shown next to the form').max(2000).optional().nullable(),
   notice_covers_ads: z.boolean().default(false),
+  // Disclosed "save as you type": the notice shown above the partner's form fields. Null = off.
+  typed_notice: z.string().trim().min(20, 'Paste the full disclosure shown above the form').max(2000).optional().nullable(),
   // Websites allowed to run this partner's collector, normalised to origins.
   allowed_origins: z
     .array(z.string().trim().max(200))

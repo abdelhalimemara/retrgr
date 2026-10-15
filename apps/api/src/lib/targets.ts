@@ -17,6 +17,7 @@ export interface Target {
   marketing_basis: 'checkbox' | 'form_notice'
   marketing_notice: string | null
   notice_covers_ads: boolean
+  typed_notice: string | null
 }
 
 /** A partner with no websites configured is unrestricted; otherwise the origin must be listed. */
@@ -28,7 +29,7 @@ export function originAllowed(allowed: string[], origin: string | null) {
 
 type Row = Target & { allowed_origins: string[] }
 const SELECT = `SELECT cp.id AS campaign_id, cp.partner_id, cp.city, p.allowed_origins,
-  p.analytics_basis, p.marketing_basis, p.marketing_notice, p.notice_covers_ads`
+  p.analytics_basis, p.marketing_basis, p.marketing_notice, p.notice_covers_ads, p.typed_notice`
 const NO_PLACEMENT = `NULL::uuid AS placement_id, NULL::text AS placement_code`
 
 /**

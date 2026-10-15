@@ -72,6 +72,7 @@ export default function PartnersPage() {
                   <div className="flex flex-wrap gap-1">
                     <Badge variant="outline">{p.analytics_basis === 'notice' ? 'No banner (notice)' : 'Banner consent'}</Badge>
                     <Badge variant="outline">{p.marketing_basis === 'form_notice' ? 'Form notice opt-in' : 'Checkbox opt-in'}</Badge>
+                    {p.typed_notice && <Badge variant="outline">Saves as typed</Badge>}
                   </div>
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{p.campaign_count}</TableCell>
@@ -115,6 +116,7 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
   const [noBanner, setNoBanner] = useState(partner?.analytics_basis === 'notice')
   const [formOptIn, setFormOptIn] = useState(partner?.marketing_basis === 'form_notice')
   const [coversAds, setCoversAds] = useState(partner?.notice_covers_ads ?? false)
+  const [saveTyped, setSaveTyped] = useState(!!partner?.typed_notice)
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -131,6 +133,7 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
       marketing_basis: formOptIn ? 'form_notice' : 'checkbox',
       marketing_notice: formOptIn ? f.get('marketing_notice') || null : null,
       notice_covers_ads: formOptIn && coversAds,
+      typed_notice: saveTyped ? f.get('typed_notice') || null : null,
     }
     try {
       if (partner) await api.put(`/admin/partners/${partner.id}`, body)
@@ -227,6 +230,33 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
                   </span>
                 </label>
               </>
+            )}
+          </div>
+
+          <div className="grid gap-3 rounded-md border p-3">
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={saveTyped} onCheckedChange={(c) => setSaveTyped(c === true)} className="mt-0.5" />
+              <span>
+                Save entries as typed (partial leads)
+                <span className="block text-xs text-muted-foreground">
+                  Only when the client’s form shows a disclosure above the fields. Name, email, phone and answers are saved once
+                  an email or phone is entered — even if the form isn’t submitted. Partial leads are for follow-up only: never
+                  exported to ad platforms, deleted on opt-out, on submit (replaced by the full lead) or after 30 days.
+                </span>
+              </span>
+            </label>
+            {saveTyped && (
+              <div className="grid gap-2">
+                <Label htmlFor="typed_notice">Disclosure exactly as shown above the form</Label>
+                <Textarea
+                  id="typed_notice"
+                  name="typed_notice"
+                  required
+                  minLength={20}
+                  placeholder="We save what you enter as you type so our team can follow up, even if you don’t submit."
+                  defaultValue={partner?.typed_notice ?? ''}
+                />
+              </div>
             )}
           </div>
 

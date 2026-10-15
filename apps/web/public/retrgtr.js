@@ -105,13 +105,9 @@
 
   function context() {
     var tz = null
-    try {
-      tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-    } catch (e) {}
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone } catch (e) {}
     var c = { device_type: deviceType(), language: navigator.language || null, timezone: tz }
-    URL_PARAMS.concat(['landing_url', 'referrer']).forEach(function (k) {
-      if (ctx[k]) c[k] = ctx[k]
-    })
+    URL_PARAMS.concat(['landing_url', 'referrer']).forEach(function (k) { if (ctx[k]) c[k] = ctx[k] })
     return c
   }
 
@@ -177,9 +173,11 @@
       .then(function (res) {
         if (!res || !res.ok || !/json/.test(res.headers.get('content-type') || '')) return
         return res.json().then(function (j) {
-          if (!j || !j.bid || bid) return
-          bid = ctx.bid = String(j.bid)
+          if (!j) return
+          if (j.save_typed) ctx.save_typed = true // partner's form discloses "saved as you type"
+          if (j.bid && !bid) bid = ctx.bid = String(j.bid)
           store('sessionStorage', CTX_KEY, JSON.stringify(ctx))
+          if (!bid) return
           if (priorBids.indexOf(bid) === -1) store('localStorage', 'retrgtr_bids', JSON.stringify(priorBids.concat(bid).slice(-50)))
         })
       })
@@ -243,6 +241,17 @@
     var st = statFor(el.form)
     if (has) st.filled[fieldName(el)] = true
     else if (el.type !== 'radio') delete st.filled[fieldName(el)]
+    if (ctx.save_typed) savePartial(el.form)
+  }
+  // Disclosed "save as you type" only (partner setting + notice on their form, enforced server-side):
+  // the form's current entries, read like a submit (no passwords/IDs), once it has an email or phone.
+  var partialTimer
+  function savePartial(form) {
+    clearTimeout(partialTimer)
+    partialTimer = setTimeout(function () {
+      var f = readForm(form)
+      if (f && !statFor(form).submitted) send('/engagement', { scan_id: ctx.scan_id, dwell_seconds: Math.round((Date.now() - start) / 1000), max_scroll_pct: maxScroll, cta_clicks: ctaClicks, partial: f }, true)
+    }, 1200)
   }
   document.addEventListener('focusout', noteFilled)
   document.addEventListener('change', noteFilled)
@@ -255,18 +264,10 @@
     if (dwell === flushed) return
     flushed = dwell
     var body = {
-      scan_id: ctx.scan_id,
-      dwell_seconds: Math.min(dwell, 86400),
-      max_scroll_pct: maxScroll,
-      cta_clicks: ctaClicks,
-      scan_to_action_ms: firstActionTs ? firstActionTs - start : null,
-      form_started: formStarted,
-      form_submitted: formSubmitted,
-      last_field: formSubmitted ? null : lastField,
-      visitor_id: visitorId,
-      forms: [],
-      abandon_event: false,
-      ad_storage_granted: consentState('ad_storage') === 'granted',
+      scan_id: ctx.scan_id, visitor_id: visitorId, dwell_seconds: Math.min(dwell, 86400), max_scroll_pct: maxScroll,
+      cta_clicks: ctaClicks, scan_to_action_ms: firstActionTs ? firstActionTs - start : null,
+      form_started: formStarted, form_submitted: formSubmitted, last_field: formSubmitted ? null : lastField,
+      forms: [], abandon_event: false, ad_storage_granted: consentState('ad_storage') === 'granted',
     }
     Object.keys(formStats).slice(0, 10).forEach(function (k) {
       var st = formStats[k]
@@ -303,9 +304,7 @@
       consent: { analytics: true, marketing: marketing, ad_personalization: marketing && !!fields.consent_ad_personalization, policy_version: POLICY },
       context: context(),
     }
-    FORM_FIELDS.forEach(function (k) {
-      body[k] = fields[k] || null
-    })
+    FORM_FIELDS.forEach(function (k) { body[k] = fields[k] || null })
     action()
     // Wait (max 1.5s) for the scan so the server can link this lead to the billboard.
     var waitScan = Promise.race([scanDone, new Promise(function (r) { setTimeout(r, 1500) })])

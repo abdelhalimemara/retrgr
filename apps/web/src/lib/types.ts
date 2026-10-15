@@ -20,6 +20,7 @@ export interface Partner {
   marketing_basis: 'checkbox' | 'form_notice'
   marketing_notice: string | null
   notice_covers_ads: boolean
+  typed_notice: string | null
   contact_email: string | null
   notes: string | null
   campaign_count: number
@@ -247,4 +248,19 @@ export interface FormReport {
   fields_total: number
   fields: { field: string; filled: number; pct: number }[]
   dropoffs: { field: string; abandons: number }[]
+}
+
+export interface PartialLead {
+  scan_id: string
+  form_id: string
+  email: string | null
+  phone: string | null
+  data: { first_name: string | null; last_name: string | null; city: string | null; extra: Record<string, string> | null }
+  notice_text: string
+  created_at: string
+  updated_at: string
+  expires_at: string
+  campaign_name: string
+  partner_name: string
+  placement_name: string | null
 }

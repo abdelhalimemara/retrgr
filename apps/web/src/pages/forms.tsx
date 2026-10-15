@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useApi } from '@/lib/api'
-import type { Campaign, FormReport } from '@/lib/types'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { formatDate, fullName, type Campaign, type FormReport, type PartialLead } from '@/lib/types'
 
 const ALL = 'all'
 
@@ -27,7 +28,7 @@ export default function FormsPage() {
     <>
       <PageHeader
         title="Forms"
-        description="How far visitors get in each form and where they stop. Field names only — what people type in forms they don’t submit is never collected."
+        description="How far visitors get in each form and where they stop. Typed entries of unsubmitted forms are only kept for partners whose form discloses it (partial leads below)."
       />
 
       <div className="mb-6 flex flex-wrap items-end gap-4">
@@ -120,10 +121,59 @@ export default function FormsPage() {
         ))}
       </div>
 
+      <PartialLeads qs={qs.toString()} />
+
       <p className="mt-4 text-xs text-muted-foreground">
         Abandoners can be retargeted by cookie/pixel through the <code>ooh_form_abandon</code> dataLayer event (partner GTM) or
         the <code>form_abandon</code> sGTM event — only where the visitor accepted ad cookies. Their form entries are not stored.
       </p>
     </>
+  )
+}
+
+/** Entries saved as typed on forms that disclose it — follow-up only, auto-deleted after 30 days. */
+function PartialLeads({ qs }: { qs: string }) {
+  const { data } = useApi<PartialLead[]>(`/admin/partial-leads?${qs}`)
+  if (!data?.length) return null
+  return (
+    <Card className="mt-6 py-0">
+      <CardHeader className="pt-6">
+        <CardTitle>Partial leads</CardTitle>
+        <CardDescription>
+          Entries saved as typed on forms that show the partner’s disclosure, from people who didn’t submit. For follow-up
+          only — never in segments or ad exports. Each is deleted after 30 days, on opt-out, or when the person submits.
+        </CardDescription>
+      </CardHeader>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>Contact</TableHead>
+            <TableHead>Form</TableHead>
+            <TableHead>Partner · campaign</TableHead>
+            <TableHead>Saved</TableHead>
+            <TableHead>Expires</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map((p) => (
+            <TableRow key={`${p.scan_id}|${p.form_id}`}>
+              <TableCell className="font-medium">{fullName({ first_name: p.data.first_name, last_name: p.data.last_name })}</TableCell>
+              <TableCell>
+                <div>{p.email ?? '—'}</div>
+                <div className="text-xs text-muted-foreground">{p.phone}</div>
+              </TableCell>
+              <TableCell className="text-muted-foreground">{p.form_id}</TableCell>
+              <TableCell className="text-muted-foreground">
+                {p.partner_name} · {p.campaign_name}
+                {p.placement_name && ` · ${p.placement_name}`}
+              </TableCell>
+              <TableCell className="text-muted-foreground">{formatDate(p.updated_at)}</TableCell>
+              <TableCell className="text-muted-foreground">{formatDate(p.expires_at)}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Card>
   )
 }

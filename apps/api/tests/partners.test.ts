@@ -106,3 +106,18 @@ describe('form abandonment payloads', () => {
     expect(JSON.stringify(r)).not.toContain('a@b.co')
   })
 })
+
+describe('disclosed save-as-you-type', () => {
+  it('needs the full disclosure text on the partner', () => {
+    expect(partnerSchema.safeParse({ name: 'B', typed_notice: 'too short' }).success).toBe(false)
+    expect(partnerSchema.safeParse({ name: 'B', typed_notice: 'We save what you enter as you type so we can follow up.' }).success).toBe(true)
+  })
+  it('keeps only contact fields from the collector payload', () => {
+    const r = engagementSchema.parse({
+      scan_id: '00000000-0000-4000-8000-000000000001', dwell_seconds: 5, max_scroll_pct: 0, cta_clicks: 0,
+      partial: { form_id: 'lead', email: 'a@b.co', first_name: 'Sara', gender: 'أنثى', consent_marketing: true, source: 'auto' },
+    })
+    expect(r.partial).toMatchObject({ form_id: 'lead', email: 'a@b.co', first_name: 'Sara', gender: 'female' })
+    expect(r.partial).not.toHaveProperty('consent_marketing')
+  })
+})
