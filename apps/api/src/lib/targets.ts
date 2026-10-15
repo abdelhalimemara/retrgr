@@ -38,7 +38,8 @@ const NO_PLACEMENT = `NULL::uuid AS placement_id, NULL::text AS placement_code`
  *  2. the partner's matching rules for client-owned QR URLs (query parameter or path prefix);
  *  3. the scan the request belongs to (a lead inherits its scan's billboard);
  *  4. an explicit campaign slug (hosted page, older snippets);
- *  5. the partner's most recent active campaign.
+ *  5. the partner's most recent active campaign;
+ *  6. with no key at all, the one partner whose registered websites include the origin.
  * The partner key, when sent, must own the campaign, and the request origin must
  * be one of that partner's websites.
  */
@@ -101,6 +102,15 @@ export async function resolveTarget(
         ORDER BY cp.starts_on DESC NULLS LAST, cp.created_at DESC LIMIT 1`,
       [r.partner],
     )
+  }
+  // 6. No key at all (e.g. a GTM tag that lost its settings): the partner whose registered
+  //    websites include the request origin — only when exactly one partner claims it.
+  if (!row && !r.partner && !r.campaign && origin) {
+    const o = normalizeOrigin(origin)
+    const owners = o
+      ? await query<{ key: string }>('SELECT key FROM partners WHERE $1 = ANY(allowed_origins) LIMIT 2', [o])
+      : []
+    if (owners.length === 1) return resolveTarget({ ...r, partner: owners[0].key }, origin)
   }
   if (!row) return null
   // Our own hosted consent page (same origin as the dashboard) is always allowed.

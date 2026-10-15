@@ -1,20 +1,31 @@
 /*!
- * Retrgtr collector — one snippet per partner, added as a Custom HTML tag in the partner's GTM:
- *   <script src="https://DASHBOARD/retrgtr.js" data-endpoint="https://SGTM" data-path="/retrgtr"
- *           data-partner="KEY" data-policy-version="v1" [data-consent="notice"] async></script>
- * Options: data-campaign="slug", data-forms="off", data-datalayer="off"; data-retrgtr-ignore on a form.
- * Sends scans, engagement (incl. per-form progress by field NAME), submitted forms with an email or
- * phone, and redacted dataLayer pushes. Unsubmitted form values are never read. Personal data only
- * goes to the endpoint, never to the dataLayer. Full documentation: README.md and the dashboard's
- * Collector setup page.
+ * Retrgtr collector — one snippet per partner, as a Custom HTML tag in the partner's GTM (GTM drops
+ * data- attributes, so settings come from window.retrgtrConfig or the script URL's query string):
+ *   <script>window.retrgtrConfig = { endpoint: 'https://SGTM', path: '/retrgtr', partner: 'KEY' }</script>
+ *   <script src="https://DASHBOARD/retrgtr.js?partner=KEY" async></script>
+ * Options: policyVersion, consent ('notice'), campaign, forms ('off'), datalayer ('off'). Unsubmitted
+ * form values are never read; personal data only goes to the endpoint. Docs: README + Collector setup.
  */
 (function () {
   'use strict'
   if (window.retrgtr) return
-  var s = document.currentScript
-  var attr = function (n, d) { return (s && s.getAttribute(n)) || d }
-  var pathAttr = s && s.getAttribute('data-path')
-  var ENDPOINT = attr('data-endpoint', '').replace(/\/$/, '') + (pathAttr == null ? '/retrgtr' : pathAttr)
+  var s = document.currentScript || document.querySelector('script[src*="retrgtr.js"]')
+  var cfg = window.retrgtrConfig || {}
+  var qp = {}
+  try { new URL(s.src).searchParams.forEach(function (v, k) { qp[k] = v }) } catch (e) {}
+  // data-foo-bar attribute → ?foo-bar= on the script URL → retrgtrConfig.fooBar
+  var attr = function (n, d) {
+    var k = n.replace(/^data-/, '')
+    var v = s && s.getAttribute(n)
+    if (v == null) v = qp[k] != null ? qp[k] : cfg[k.replace(/-([a-z])/g, function (m, c) { return c.toUpperCase() })]
+    return v == null || v === '' ? d : String(v)
+  }
+  var pa = s && s.getAttribute('data-path') // '' is meaningful: endpoint already includes the path
+  var pathAttr = pa != null ? pa : qp.path != null ? qp.path : cfg.path != null ? String(cfg.path) : null
+  // No endpoint configured → the collector's own origin, where Hosting forwards /retrgtr to the central sGTM.
+  var origin = ''
+  try { origin = new URL(s.src).origin } catch (e) {}
+  var ENDPOINT = attr('data-endpoint', origin).replace(/\/$/, '') + (pathAttr == null ? '/retrgtr' : pathAttr)
   var CAMPAIGN = attr('data-campaign', '') || null
   var PARTNER = attr('data-partner', '') || null
   var POLICY = attr('data-policy-version', 'v1')
@@ -37,15 +48,11 @@
   function uuid() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID()
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
-      var r = (crypto.getRandomValues(new Uint8Array(1))[0] & 15) >> 0
-      return (c === 'x' ? r : (r & 3) | 8).toString(16)
+      var r = crypto.getRandomValues(new Uint8Array(1))[0] & 15; return (c === 'x' ? r : (r & 3) | 8).toString(16)
     })
   }
   function store(kind, key, val) {
-    try {
-      if (val === undefined) return window[kind].getItem(key)
-      window[kind].setItem(key, val)
-    } catch (e) {}
+    try { if (val === undefined) return window[kind].getItem(key); window[kind].setItem(key, val) } catch (e) {}
     return null
   }
   function push(data) { (window.dataLayer = window.dataLayer || []).push(data) }
@@ -151,7 +158,6 @@
   var scanResolve
   var scanDone = new Promise(function (r) { scanResolve = r })
   function sendScan(hints) {
-    if (!CAMPAIGN && !PARTNER && !bid) return scanResolve()
     var req = send('/scan', {
       scan_id: ctx.scan_id,
       visitor_id: visitorId,
@@ -208,15 +214,9 @@
   // Typed values of forms that are never submitted are not read or sent.
   var formStats = {}
   var TRACK_SKIP = /^(password|hidden|file|submit|button|reset|image)$/
-  function fieldName(el) {
-    return String(el.name || el.id || '').slice(0, 40)
-  }
-  function formKey(f) {
-    return (f.id || f.getAttribute('name') || (f.getAttribute('action') || '').split('?')[0] || 'form').slice(0, 120)
-  }
-  function trackable(el) {
-    return el && el.form && !el.form.closest('[data-retrgtr-ignore]') && fieldName(el) && !TRACK_SKIP.test((el.type || '').toLowerCase())
-  }
+  function fieldName(el) { return String(el.name || el.id || '').slice(0, 40) }
+  function formKey(f) { return (f.id || f.getAttribute('name') || (f.getAttribute('action') || '').split('?')[0] || 'form').slice(0, 120) }
+  function trackable(el) { return el && el.form && !el.form.closest('[data-retrgtr-ignore]') && fieldName(el) && !TRACK_SKIP.test((el.type || '').toLowerCase()) }
   function statFor(f) {
     var k = formKey(f)
     if (!formStats[k]) {
@@ -471,7 +471,7 @@
     store('sessionStorage', 'retrgtr_dlseq', String(dlSeq))
   }
   function flushDataLayer(beacon) {
-    while (dlQueue.length && (CAMPAIGN || PARTNER || bid)) {
+    while (dlQueue.length) {
       var batch = dlQueue.splice(0, 50)
       dlSent += batch.length
       send('/datalayer', { scan_id: ctx.scan_id, visitor_id: visitorId, campaign: CAMPAIGN, partner: PARTNER, consent: { analytics: true }, events: batch }, beacon)
@@ -485,11 +485,8 @@
       for (var j = 0; j < arguments.length; j++) record(arguments[j])
       return origPush.apply(dl, arguments)
     }
-    // First flush waits for the scan to be recorded; the API only accepts events for known scans.
-    setTimeout(function tick() {
-      flushDataLayer(false)
-      setTimeout(tick, 5000)
-    }, 3000)
+    // First flush only after the scan is recorded: the API drops events for scans it doesn't know yet.
+    scanDone.then(function tick() { flushDataLayer(false); setTimeout(tick, 5000) })
     document.addEventListener('visibilitychange', function () { if (document.hidden) flushDataLayer(true) })
     window.addEventListener('pagehide', function () { flushDataLayer(true) })
   }

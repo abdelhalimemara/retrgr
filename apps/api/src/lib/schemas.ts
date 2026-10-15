@@ -43,8 +43,6 @@ export const pageSchema = z
   .optional()
   .nullable()
 
-const hasTarget = (v: { campaign?: string | null; partner?: string | null; bid?: string | null }) =>
-  !!(v.campaign || v.partner || v.bid)
 const placementCode = z.string().regex(/^[a-z0-9-]{2,40}$/)
 const smallInt = z.number().int().min(0).max(1_000_000).optional().nullable()
 
@@ -86,7 +84,7 @@ export const scanSchema = z.object({
     })
     .partial()
     .default({}),
-}).refine(hasTarget, { message: 'campaign, partner or bid is required' })
+})
 
 export const engagementSchema = z.object({
   scan_id: z.uuid(),
@@ -149,7 +147,7 @@ export const captureSchema = z
     context: captureContextSchema.default({}),
   })
   .refine((v) => v.email || v.phone, { message: 'Email or phone is required', path: ['email'] })
-  .refine(hasTarget, { message: 'campaign, partner or bid is required' })
+  
 
 /** dataLayer pushes observed on the landing page, batched by the collector. */
 export const dataLayerSchema = z.object({

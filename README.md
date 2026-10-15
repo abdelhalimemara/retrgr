@@ -168,7 +168,14 @@ Firebase ID token from an allow-listed email.
    unique across all campaigns. **All QR codes (.zip)** downloads every print-ready QR plus a
    `manifest.csv` for the print vendor.
 3. **Partners → Snippet.** Send the snippet to the partner. They add it in their GTM as a Custom
-   HTML tag on All Pages, with Consent Settings requiring `analytics_storage`.
+   HTML tag on All Pages. In banner mode, its Consent Settings must require `analytics_storage`.
+   - GTM drops `data-` attributes from injected scripts, so the snippet passes its settings in
+     `window.retrgtrConfig` and in the script URL.
+   - A bare `<script src="https://<dashboard>/retrgtr.js">` also works. It sends to
+     `/retrgtr` on the dashboard domain (forwarded to the central sGTM), and the API identifies
+     the partner from the site's origin.
+   - Register **every** hostname the site uses, e.g. both `brand.sa` and `www.brand.sa`, if one
+     redirects to the other.
    **If the client already has their own QR codes and landing page**, the snippet still collects
    there. To attribute billboards, set each placement up in one of these ways:
    - **Matching rule.** Their QR URLs already differ per billboard, e.g. `?utm_content=kfr` or

@@ -42,11 +42,18 @@ export default function CollectorPage() {
   const endpoint = sgtm ? sgtm.replace(/\/retrgtr\/?$/, '') : API_URL || window.location.origin
   const path = sgtm ? '/retrgtr' : '/api/public'
 
-  const tag = `<script src="${window.location.origin}/retrgtr.js"
-        data-endpoint="${endpoint}"
-        data-path="${path}"
-        data-partner="${partner?.key ?? 'PARTNER-KEY'}"
-        data-policy-version="v1"${noBanner ? '\n        data-consent="notice"' : ''} async></script>`
+  // GTM's Custom HTML tag drops data- attributes from injected scripts, so the settings go in a
+  // global set just before the script (plus the partner key in the URL as a fallback).
+  const key = partner?.key ?? 'PARTNER-KEY'
+  const tag = `<script>
+  window.retrgtrConfig = {
+    endpoint: '${endpoint}',
+    path: '${path}',
+    partner: '${key}',
+    policyVersion: 'v1'${noBanner ? ",\n    consent: 'notice'" : ''}
+  };
+</script>
+<script src="${window.location.origin}/retrgtr.js?partner=${key}" async></script>`
 
   const options = `<!-- Optional: exclude a form (e.g. a footer newsletter) from capture -->
 <form data-retrgtr-ignore> … </form>

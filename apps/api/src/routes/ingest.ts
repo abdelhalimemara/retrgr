@@ -28,6 +28,8 @@ ingestRoutes.post('/scan', async (c) => {
   if (!target) return c.body(null, 202)
   // Running without a banner is only allowed for partners set up that way in the dashboard.
   if (b.consent.basis === 'notice' && target.analytics_basis !== 'notice') return c.body(null, 202)
+  // For no-banner partners we can't verify a banner was shown, so record the weaker basis.
+  const basis = target.analytics_basis === 'notice' ? 'notice' : b.consent.basis
 
   const ctx = b.context
   // Offline lookup of the visitor's IP (forwarded by sGTM); only the derived fields are kept.
@@ -52,7 +54,7 @@ ingestRoutes.post('/scan', async (c) => {
       ctx.utm_medium ?? null,
       ctx.utm_campaign ?? null,
       bot,
-      b.consent.basis,
+      basis,
       geo.ip_city,
       geo.ip_region,
       geo.ip_country,
@@ -78,7 +80,7 @@ ingestRoutes.post('/scan', async (c) => {
       via_sgtm: viaSgtm(c),
       user_agent: ua,
       policy_version: b.consent.policy_version,
-      analytics_basis: b.consent.basis,
+      analytics_basis: basis,
       ...geo,
       ...ctx,
       ...b.device,

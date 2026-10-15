@@ -7,6 +7,13 @@
     ],
     "rewrites": [
       {
+        "source": "/retrgtr/**",
+        "run": {
+          "serviceId": "sgtm",
+          "region": "me-central1"
+        }
+      },
+      {
         "source": "/q/**",
         "run": {
           "serviceId": "retrgtr-api",

@@ -34,13 +34,14 @@ describe('partner-level snippet payloads', () => {
   it('accepts a partner key or a bid instead of a campaign', () => {
     expect(scanSchema.safeParse({ ...scan, partner: 'abc123def456' }).success).toBe(true)
     expect(scanSchema.safeParse({ ...scan, bid: 'kfr-01' }).success).toBe(true)
-    expect(scanSchema.safeParse(scan).success).toBe(false)
+    // No key at all is accepted: the API then resolves the partner from the request origin.
+    expect(scanSchema.safeParse(scan).success).toBe(true)
     expect(scanSchema.safeParse({ ...scan, partner: 'Bad Key!' }).success).toBe(false)
   })
-  it('requires a target on leads too', () => {
+  it('accepts leads with a partner key or none (origin fallback)', () => {
     const lead = { email: 'a@b.co', consent: { marketing: true, policy_version: 'v1' } }
     expect(captureSchema.safeParse({ ...lead, partner: 'abc123def456' }).success).toBe(true)
-    expect(captureSchema.safeParse(lead).success).toBe(false)
+    expect(captureSchema.safeParse(lead).success).toBe(true)
   })
 })
 
