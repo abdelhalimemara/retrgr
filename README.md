@@ -133,12 +133,20 @@ Firebase ID token from an allow-listed email.
 ## Onboarding a partner
 
 1. **Partners → New partner.** Add the partner's websites (one per line).
-2. **Campaigns → New campaign → Placements.** Add each billboard. Its code becomes the `bid`.
-   Download the print-ready QR codes.
+2. **Campaigns → New campaign → Placements.** Add billboards one by one, or use **Import CSV**
+   (download the **CSV template** first). Each billboard's code becomes its `bid`. Codes must be
+   unique across all campaigns. **All QR codes (.zip)** downloads every print-ready QR plus a
+   `manifest.csv` for the print vendor.
 3. **Partners → Snippet.** Send the snippet to the partner. They add it in their GTM as a Custom
    HTML tag on All Pages, with Consent Settings requiring `analytics_storage`.
-4. Leads appear under Customers and Attribution. Build segments, then export match lists for
-   Meta / Google / TikTok / Snapchat.
+4. Leads appear under Customers and Attribution. On Attribution, **Credit each lead to** sets how
+   leads are counted per billboard:
+   - every billboard the person scanned (shared credit);
+   - the first billboard;
+   - the last billboard before sign-up.
+
+   With first or last, the per-billboard leads add up to the campaign total.
+5. Build segments, then export match lists for Meta / Google / TikTok / Snapchat.
 
 ## Before going live
 
