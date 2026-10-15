@@ -75,7 +75,7 @@ formRoutes.get('/forms', async (c) => {
 
 /**
  * Partial leads: entries saved as typed on forms that disclose it (partner typed_notice).
- * For follow-up only — never in segments or exports. Expire after 30 days. Viewing is audited.
+ * For follow-up only — never in segments or exports. Kept until submit or opt-out. Viewing is audited.
  */
 formRoutes.get('/partial-leads', async (c) => {
   const q = rangeQuery.parse(c.req.query())

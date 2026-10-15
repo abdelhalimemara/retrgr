@@ -131,7 +131,7 @@ export default function FormsPage() {
   )
 }
 
-/** Entries saved as typed on forms that disclose it — follow-up only, auto-deleted after 30 days. */
+/** Entries saved as typed on forms that disclose it — follow-up only, kept until submit or opt-out. */
 function PartialLeads({ qs }: { qs: string }) {
   const { data } = useApi<PartialLead[]>(`/admin/partial-leads?${qs}`)
   if (!data?.length) return null
@@ -141,7 +141,7 @@ function PartialLeads({ qs }: { qs: string }) {
         <CardTitle>Partial leads</CardTitle>
         <CardDescription>
           Entries saved as typed on forms that show the partner’s disclosure, from people who didn’t submit. For follow-up
-          only — never in segments or ad exports. Each is deleted after 30 days, on opt-out, or when the person submits.
+          only — never in segments or ad exports. Removed on opt-out, or replaced by the full lead when the person submits.
         </CardDescription>
       </CardHeader>
       <Table>
@@ -152,7 +152,6 @@ function PartialLeads({ qs }: { qs: string }) {
             <TableHead>Form</TableHead>
             <TableHead>Partner · campaign</TableHead>
             <TableHead>Saved</TableHead>
-            <TableHead>Expires</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -169,7 +168,6 @@ function PartialLeads({ qs }: { qs: string }) {
                 {p.placement_name && ` · ${p.placement_name}`}
               </TableCell>
               <TableCell className="text-muted-foreground">{formatDate(p.updated_at)}</TableCell>
-              <TableCell className="text-muted-foreground">{formatDate(p.expires_at)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

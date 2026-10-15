@@ -8,7 +8,7 @@ import { validateContacts } from '../src/lib/validation.js'
 async function main() {
   const erasures = await flushEventErasures()
   const validation = await validateContacts(Number(process.env.VALIDATION_BATCH ?? 500))
-  // 3. delete partial leads (entries saved as typed) older than 30 days.
+  // 3. delete partial leads past an expiry, if one is ever set (none by default: kept until submit/opt-out).
   const expired = await query('DELETE FROM partial_leads WHERE expires_at < now() RETURNING scan_id')
   console.log(JSON.stringify({ erasures, validation, partial_leads_expired: expired.length }))
 }

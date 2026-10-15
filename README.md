@@ -52,8 +52,8 @@ Billboard QR (?bid=…)  →  partner landing page (partner's own web GTM + Retr
 - **Partial leads (disclosed "save as you type").** This is a per-partner setting, and it requires
   a disclosure shown above the client's form. Once an email or phone is entered, the form's
   entries are saved even if it's never submitted, and appear on the Forms page. They're for
-  follow-up only: never in segments or ad exports. They're deleted when the person submits
-  (replaced by the full lead), opts out, or after 30 days. Without the setting, unsubmitted forms
+  follow-up only: never in segments or ad exports. They're kept until the person submits
+  (replaced by the full lead) or opts out, with no automatic expiry. Without the setting, unsubmitted forms
   record field names only.
 - **Enrichment (first-party and offline).**
   - **IP lookup.** Each scan gets city, region, country and mobile carrier (STC, Mobily, Zain, …)

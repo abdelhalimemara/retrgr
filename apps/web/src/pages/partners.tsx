@@ -241,7 +241,7 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
                 <span className="block text-xs text-muted-foreground">
                   Only when the client’s form shows a disclosure above the fields. Name, email, phone and answers are saved once
                   an email or phone is entered — even if the form isn’t submitted. Partial leads are for follow-up only: never
-                  exported to ad platforms, deleted on opt-out, on submit (replaced by the full lead) or after 30 days.
+                  exported to ad platforms; removed on opt-out, or replaced by the full lead when the person submits.
                 </span>
               </span>
             </label>

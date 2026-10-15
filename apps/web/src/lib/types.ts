@@ -259,7 +259,7 @@ export interface PartialLead {
   notice_text: string
   created_at: string
   updated_at: string
-  expires_at: string
+  expires_at: string | null
   campaign_name: string
   partner_name: string
   placement_name: string | null
