@@ -8,7 +8,7 @@ import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
 import { api, useApi } from '@/lib/api'
-import { formatDate, fullName, type CustomerDetail } from '@/lib/types'
+import { formatDate, fullName, sar, type CustomerDetail, type CustomerInsights } from '@/lib/types'
 
 export function CustomerSheet({ id, onClose, onErased }: { id: string | null; onClose: () => void; onErased: () => void }) {
   const { data } = useApi<CustomerDetail>(id ? `/admin/customers/${id}` : null)
@@ -28,8 +28,12 @@ export function CustomerSheet({ id, onClose, onErased }: { id: string | null; on
 
   const rows: [string, string | null | undefined][] = detail
     ? [
-        ['Email', detail.customer.email],
-        ['Phone', detail.customer.phone],
+        ['Email', detail.customer.email && `${detail.customer.email}${detail.customer.email_status ? ` · ${detail.customer.email_status}` : ''}`],
+        [
+          'Phone',
+          detail.customer.phone &&
+            [detail.customer.phone, detail.customer.phone_status, detail.customer.phone_carrier].filter(Boolean).join(' · '),
+        ],
         ['Age range', detail.customer.age_range],
         ['Gender', detail.customer.gender],
         ['City', detail.customer.city],
@@ -61,6 +65,8 @@ export function CustomerSheet({ id, onClose, onErased }: { id: string | null; on
                 </div>
               ))}
             </dl>
+
+            {detail.insights && <Insights i={detail.insights} />}
 
             <Separator />
             <section className="grid gap-3">
@@ -148,5 +154,45 @@ export function CustomerSheet({ id, onClose, onErased }: { id: string | null; on
         </DialogContent>
       </Dialog>
     </Sheet>
+  )
+}
+
+const DEVICE_LABEL: Record<string, string> = { ios: 'iPhone / iPad', android_premium: 'Android (premium)', android: 'Android', desktop: 'Desktop' }
+
+/** Derived from data we already hold — no third-party data. IP-based fields from DB-IP Lite. */
+function Insights({ i }: { i: CustomerInsights }) {
+  const facts: [string, string | null][] = [
+    ['Billboards seen', `${i.placements} (${i.scans} scans)`],
+    ['Usually scans', i.daypart],
+    ['Language', i.language === 'ar' ? 'Arabic' : i.language === 'en' ? 'English' : i.language],
+    ['Device', i.device_tier && (DEVICE_LABEL[i.device_tier] ?? i.device_tier)],
+    ['Network', [i.carrier, i.ip_city].filter(Boolean).join(' · ') || null],
+    ['Email type', i.email_type],
+    ['Shopping', i.purchases ? `${i.purchases} purchases · ${sar(Number(i.purchase_value))}` : i.cart_adds ? `${i.cart_adds} cart adds, no purchase` : null],
+  ]
+  return (
+    <>
+      <Separator />
+      <section className="grid gap-3">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium">Insights</h3>
+          <Badge variant={i.intent_score >= 60 ? 'default' : 'secondary'}>Intent {i.intent_score}/100</Badge>
+        </div>
+        <dl className="grid grid-cols-[110px_1fr] gap-y-2 text-sm">
+          {facts.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-muted-foreground">{k}</dt>
+              <dd className="capitalize">{v || '—'}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="text-xs text-muted-foreground">
+          Network location:{' '}
+          <a href="https://db-ip.com" target="_blank" rel="noreferrer" className="underline">
+            IP Geolocation by DB-IP
+          </a>
+        </p>
+      </section>
+    </>
   )
 }

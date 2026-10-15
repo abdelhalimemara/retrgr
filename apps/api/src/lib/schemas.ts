@@ -5,6 +5,8 @@ export const AGE_RANGES = ['18-24', '25-34', '35-44', '45-54', '55-64', '65+'] a
 export const GENDERS = ['male', 'female', 'undisclosed'] as const
 export const PLATFORMS = ['meta', 'google', 'tiktok', 'snapchat'] as const
 export const PURPOSES = ['marketing', 'ad_personalization'] as const
+export const DAYPARTS = ['morning', 'midday', 'evening', 'night'] as const
+export const DEVICE_TIERS = ['ios', 'android_premium', 'android', 'desktop'] as const
 
 const optText = (max = 200) => z.string().trim().max(max).optional().nullable()
 
@@ -78,6 +80,7 @@ export const scanSchema = z.object({
       pixel_ratio: z.number().min(0).max(10).optional().nullable(),
       orientation: optText(40),
       connection_type: optText(20),
+      network: optText(20), // wifi / cellular (Network Information API, where supported)
       languages: optText(200),
       touch_points: smallInt,
     })
@@ -251,6 +254,19 @@ export const segmentFiltersSchema = z.object({
   capturedFrom: z.iso.date().optional(),
   capturedTo: z.iso.date().optional(),
   requireAdPersonalization: z.boolean().optional(),
+  // First-party insights (customer_insights view)
+  minIntent: z.number().int().min(1).max(100).optional(),
+  minPlacements: z.number().int().min(2).max(50).optional(), // saw several different billboards
+  dayparts: z.array(z.enum(DAYPARTS)).optional(),
+  languages: z.array(z.string().regex(/^[a-z]{2}$/)).max(20).optional(),
+  deviceTiers: z.array(z.enum(DEVICE_TIERS)).optional(),
+  emailTypes: z.array(z.enum(['personal', 'work'])).optional(),
+  carriers: z.array(z.string().max(80)).max(20).optional(),
+  commerce: z.enum(['buyers', 'cart_abandoners', 'non_buyers']).optional(),
+  minPurchaseValue: z.number().min(0).max(1e9).optional(),
+  purchasedWithinDays: z.number().int().min(1).max(3650).optional(),
+  // Contact validation: drop people whose every identifier failed validation.
+  validContactsOnly: z.boolean().optional(),
 })
 export type SegmentFilters = z.infer<typeof segmentFiltersSchema>
 

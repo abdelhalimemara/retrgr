@@ -1,3 +1,4 @@
+import { latinName } from './arabic-names.js'
 import { normalizeToken, sha256 } from './normalize.js'
 
 export type Platform = 'meta' | 'google' | 'tiktok' | 'snapchat'
@@ -11,6 +12,24 @@ export interface ExportRow {
   city: string | null
   country: string
   gender: string | null
+  email_status?: string | null
+  phone_status?: string | null
+}
+
+/** Identifiers that failed validation are dropped from exports (the person stays if another one is valid). */
+export function usableIdentifiers(r: ExportRow): ExportRow {
+  return {
+    ...r,
+    email: r.email_status === 'invalid' ? null : r.email,
+    phone: r.phone_status === 'invalid' ? null : r.phone,
+  }
+}
+
+/** People actually present in a file (rows can repeat for Meta name variants). */
+export function exportedPeople(platform: Platform, rows: ExportRow[], identifier: Identifier = 'email') {
+  const clean = rows.map(usableIdentifiers)
+  if (platform === 'tiktok' || platform === 'snapchat') return clean.filter((r) => (identifier === 'email' ? r.email : r.phone)).length
+  return clean.filter((r) => r.email || r.phone).length
 }
 
 /** Platforms won't serve to lists below these sizes; surfaced as a warning in the UI. */
@@ -26,25 +45,30 @@ const csvLine = (cells: string[]) => cells.map((c) => (/[",\n]/.test(c) ? `"${c.
  * Column layouts follow each platform's upload template — re-check them against the
  * current templates if a platform rejects a file.
  */
-export function buildExportCsv(platform: Platform, rows: ExportRow[], identifier: Identifier = 'email'): string {
+export function buildExportCsv(platform: Platform, all: ExportRow[], identifier: Identifier = 'email'): string {
   const lines: string[] = []
+  const rows = all.map(usableIdentifiers).filter((r) => r.email || r.phone)
 
   switch (platform) {
     case 'meta': {
       // Meta: phone as digits incl. country code without '+'; names/city lowercase without punctuation.
       lines.push('email,phone,fn,ln,ct,country,gen')
+      const row = (r: ExportRow, fn: string | null, ln: string | null) =>
+        csvLine([
+          h(r.email),
+          h(digits(r.phone)),
+          h(normalizeToken(fn)),
+          h(normalizeToken(ln)),
+          h(normalizeToken(r.city)),
+          h(r.country.toLowerCase()),
+          h(r.gender === 'male' ? 'm' : r.gender === 'female' ? 'f' : null),
+        ])
       for (const r of rows) {
-        lines.push(
-          csvLine([
-            h(r.email),
-            h(digits(r.phone)),
-            h(normalizeToken(r.first_name)),
-            h(normalizeToken(r.last_name)),
-            h(normalizeToken(r.city)),
-            h(r.country.toLowerCase()),
-            h(r.gender === 'male' ? 'm' : r.gender === 'female' ? 'f' : null),
-          ]),
-        )
+        lines.push(row(r, r.first_name, r.last_name))
+        // Arabic names: add a row with the common Latin spelling — Meta profiles are often in Latin script.
+        const fn = latinName(r.first_name, 'first')
+        const ln = latinName(r.last_name, 'family')
+        if (fn || ln) lines.push(row(r, fn ?? r.first_name, ln ?? r.last_name))
       }
       break
     }

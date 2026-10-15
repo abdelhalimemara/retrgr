@@ -124,6 +124,7 @@
       pixel_ratio: window.devicePixelRatio || null,
       orientation: (scr.orientation && scr.orientation.type) || null,
       connection_type: conn.effectiveType || null,
+      network: conn.type || null, // wifi / cellular where the browser exposes it
       languages: navigator.languages ? navigator.languages.join(',').slice(0, 200) : null,
       touch_points: navigator.maxTouchPoints || 0,
     }
@@ -188,9 +189,7 @@
 
   // ---- engagement ----
   var start = Date.now()
-  var maxScroll = 0
-  var ctaClicks = 0
-  var firstActionTs = null
+  var maxScroll = 0, ctaClicks = 0, firstActionTs = null
   var formStarted = false, formSubmitted = false
   var lastField = null
   function action() { if (!firstActionTs) firstActionTs = Date.now() }

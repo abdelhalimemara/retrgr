@@ -7,3 +7,4 @@
 .swarm
 .agents
 ruvector.db
+apps/api/geo

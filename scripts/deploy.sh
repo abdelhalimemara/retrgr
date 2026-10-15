@@ -30,6 +30,13 @@ gcloud builds submit "$ROOT" --config "$ROOT/config/cloudbuild.api.yaml" \
 
 COMMON_ENV="NODE_ENV=production,DB_HOST=/cloudsql/${CONN},DB_NAME=retrgtr,DB_USER=retrgtr"
 SECRETS="DB_PASSWORD=retrgtr-db-password:latest,SGTM_SHARED_SECRET=retrgtr-sgtm-secret:latest"
+# Optional contact-validation vendors: create these secrets to enable them (both process data outside KSA).
+for pair in ZEROBOUNCE_API_KEY=retrgtr-zerobounce-key TWILIO_ACCOUNT_SID=retrgtr-twilio-sid TWILIO_AUTH_TOKEN=retrgtr-twilio-token; do
+  if gcloud secrets describe "${pair#*=}" >/dev/null 2>&1; then
+    gcloud secrets add-iam-policy-binding "${pair#*=}" --member "serviceAccount:$SA" --role roles/secretmanager.secretAccessor >/dev/null
+    SECRETS="${SECRETS},${pair}:latest"
+  fi
+done
 
 echo "==> Running migrations (Cloud Run job)"
 JOB_ARGS=(--image "$IMAGE" --region "$REGION" --service-account "$SA" --set-cloudsql-instances "$CONN"
@@ -42,11 +49,11 @@ else
 fi
 gcloud run jobs execute retrgtr-migrate --region "$REGION" --wait
 
-echo "==> BigQuery erasure retry job (hourly)"
+echo "==> Maintenance job (hourly): BigQuery erasure retries + contact validation"
 # Erasures BigQuery refuses while rows sit in the streaming buffer are queued and retried here.
 ERASE_ARGS=(--image "$IMAGE" --region "$REGION" --service-account "$SA" --set-cloudsql-instances "$CONN"
   --set-env-vars "${COMMON_ENV},BQ_PROJECT_ID=${PROJECT_ID},BQ_DATASET=${BQ_DATASET},BQ_LOCATION=${REGION}"
-  --set-secrets "$SECRETS" --command node --args dist/scripts/flush-erasures.js --max-retries 0 --task-timeout 600)
+  --set-secrets "$SECRETS" --command node --args dist/scripts/maintenance.js --max-retries 0 --task-timeout 1200)
 if gcloud run jobs describe retrgtr-erasures --region "$REGION" >/dev/null 2>&1; then
   gcloud run jobs update retrgtr-erasures "${ERASE_ARGS[@]}"
 else
@@ -70,7 +77,7 @@ gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-accou
   --add-cloudsql-instances "$CONN" --no-invoker-iam-check \
   --set-env-vars "^;^${COMMON_ENV//,/;};ADMIN_ORIGINS=${WEB_ORIGIN};ADMIN_EMAILS=${ADMIN_EMAILS};FIREBASE_PROJECT_ID=${PROJECT_ID};BQ_PROJECT_ID=${PROJECT_ID};BQ_DATASET=${BQ_DATASET};BQ_LOCATION=${REGION}" \
   --set-secrets "$SECRETS" \
-  --min-instances 0 --max-instances 20 --cpu 1 --memory 512Mi --concurrency 80
+  --min-instances 0 --max-instances 20 --cpu 1 --memory 1Gi --concurrency 80
 API_URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"
 echo "    API: $API_URL"
 

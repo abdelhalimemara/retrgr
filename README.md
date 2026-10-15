@@ -49,6 +49,21 @@ Billboard QR (?bid=…)  →  partner landing page (partner's own web GTM + Retr
   shows starts, submits, completion, how far people get per field, and where they quit. An
   `ooh_form_abandon` dataLayer event and an sGTM `form_abandon` event let ad tags retarget
   abandoners by cookie/pixel. The sGTM event is gated on `x-retrgtr-ad-storage`.
+- **Enrichment (first-party and offline).**
+  - **IP lookup.** Each scan gets city, region, country and mobile carrier (STC, Mobily, Zain, …)
+    from the free DB-IP Lite databases. The lookup runs inside the API: no IP goes to a third
+    party, and scans never store the IP. The databases are downloaded at image build
+    (`apps/api/scripts/fetch-geo.mjs`; run it once locally into `apps/api/geo/`).
+    Attribution: [IP Geolocation by DB-IP](https://db-ip.com).
+  - **Insights.** The `customer_insights` view gives every person an intent score (0–100), plus
+    billboards seen, daypart, language, device tier, carrier, work/personal email, and dataLayer
+    `add_to_cart` / `purchase` counts and value. All of these are segment filters.
+  - **Meta exports** add a Latin-spelling row for common Arabic names.
+  - **Contact validation.** It runs hourly in the maintenance job, or via "Validate contacts" on
+    Customers. Built-in checks need no vendor: email syntax, disposable/role addresses, MX/null-MX,
+    and phone line type. Optional vendors: create the Secret Manager secrets
+    `retrgtr-zerobounce-key`, or `retrgtr-twilio-sid` + `retrgtr-twilio-token`, and redeploy.
+    Both vendors process data outside KSA. Identifiers that fail validation are dropped from exports.
 - **Erasure.** Deleting a customer removes them from Cloud SQL. Their BigQuery events are queued
   and erased by an hourly job, because BigQuery refuses deletes on recently streamed rows.
 

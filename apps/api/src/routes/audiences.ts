@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth.js'
 import { audit, query } from '../db.js'
-import { buildExportCsv, countCsvRows, MIN_AUDIENCE, type ExportRow } from '../lib/exporters.js'
+import { buildExportCsv, exportedPeople, MIN_AUDIENCE, type ExportRow } from '../lib/exporters.js'
 import { exportSchema, segmentFiltersSchema, segmentSchema, type SegmentFilters } from '../lib/schemas.js'
 import { buildSegmentWhere } from '../lib/segments.js'
 
@@ -61,11 +61,12 @@ audienceRoutes.post('/exports', async (c) => {
   // Sending to ad platforms for targeting requires the ad personalisation purpose.
   const { where, params } = buildSegmentWhere({ ...segment.filters, requireAdPersonalization: true })
   const rows = await query<ExportRow>(
-    `SELECT c.email, c.phone, c.first_name, c.last_name, c.city, c.country, c.gender FROM customers c WHERE ${where}`,
+    `SELECT c.email, c.phone, c.first_name, c.last_name, c.city, c.country, c.gender, c.email_status, c.phone_status
+       FROM customers c WHERE ${where}`,
     params,
   )
   const csv = buildExportCsv(b.platform, rows, b.identifier)
-  const recordCount = countCsvRows(csv)
+  const recordCount = exportedPeople(b.platform, rows, b.identifier)
 
   const [exp] = await query<{ id: string }>(
     `INSERT INTO exports (segment_id, segment_name, platform, identifier, record_count, created_by)

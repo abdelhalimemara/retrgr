@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { query } from '../db.js'
 import { writeEvents, writeEvent } from '../lib/events.js'
-import { clientUserAgent, isBot, rateLimit, requestOrigin, viaSgtm } from '../lib/request.js'
+import { lookupIp } from '../lib/geoip.js'
+import { clientIp, clientUserAgent, isBot, rateLimit, requestOrigin, viaSgtm } from '../lib/request.js'
 import { resolveTarget } from '../lib/targets.js'
 import { dataLayerSchema, engagementSchema, scanSchema } from '../lib/schemas.js'
 import { scrubDataLayer } from '../lib/scrub.js'
@@ -29,10 +30,13 @@ ingestRoutes.post('/scan', async (c) => {
   if (b.consent.basis === 'notice' && target.analytics_basis !== 'notice') return c.body(null, 202)
 
   const ctx = b.context
+  // Offline lookup of the visitor's IP (forwarded by sGTM); only the derived fields are kept.
+  const geo = await lookupIp(clientIp(c))
   const inserted = await query(
     `INSERT INTO scans (id, campaign_id, placement_id, visitor_id, scan_number, offer_variant, device_type, os,
-       language, utm_source, utm_medium, utm_campaign, is_bot, analytics_basis)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+       language, utm_source, utm_medium, utm_campaign, is_bot, analytics_basis,
+       ip_city, ip_region, ip_country, asn, carrier, network_type, device_model)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21)
      ON CONFLICT (id) DO NOTHING RETURNING id`,
     [
       b.scan_id,
@@ -49,6 +53,13 @@ ingestRoutes.post('/scan', async (c) => {
       ctx.utm_campaign ?? null,
       bot,
       b.consent.basis,
+      geo.ip_city,
+      geo.ip_region,
+      geo.ip_country,
+      geo.asn,
+      geo.carrier,
+      b.device.network ?? null,
+      b.device.model ?? null,
     ],
   )
 
@@ -68,6 +79,7 @@ ingestRoutes.post('/scan', async (c) => {
       user_agent: ua,
       policy_version: b.consent.policy_version,
       analytics_basis: b.consent.basis,
+      ...geo,
       ...ctx,
       ...b.device,
     })
@@ -122,6 +134,18 @@ ingestRoutes.post('/datalayer', async (c) => {
     [b.scan_id, b.visitor_id],
   )
   if (!scan) return c.body(null, 202)
+  // Commerce signals for scores and segments (GA4 ecommerce event names; value assumed SAR).
+  const commerce = b.events.map((e) => commerceOf(e.event, e.data)).filter((x) => x !== null)
+  const carts = commerce.filter((x) => x.kind === 'cart').length
+  const buys = commerce.filter((x) => x.kind === 'purchase')
+  if (carts || buys.length) {
+    await query(
+      `UPDATE scans SET ecom_cart_adds = ecom_cart_adds + $2, ecom_purchases = ecom_purchases + $3,
+              ecom_value = ecom_value + $4, last_purchase_at = CASE WHEN $3 > 0 THEN now() ELSE last_purchase_at END
+        WHERE id = $1`,
+      [b.scan_id, carts, buys.length, buys.reduce((n, x) => n + x.value, 0)],
+    )
+  }
   const now = Date.now()
   await writeEvents(
     'datalayer_events',
@@ -142,3 +166,14 @@ ingestRoutes.post('/datalayer', async (c) => {
   )
   return c.body(null, 202)
 })
+
+/** add_to_cart / purchase from a dataLayer push (plain object or gtag('event', name, params)). */
+export function commerceOf(name: string | null | undefined, data: unknown): { kind: 'cart' | 'purchase'; value: number } | null {
+  const kind = name === 'purchase' ? 'purchase' : name === 'add_to_cart' ? 'cart' : null
+  if (!kind || !data || typeof data !== 'object') return null
+  const d = data as { ecommerce?: { value?: unknown }; value?: unknown; gtag?: unknown[] }
+  const params = Array.isArray(d.gtag) ? (d.gtag[2] as { value?: unknown } | undefined) : undefined
+  const raw = Number(d.ecommerce?.value ?? d.value ?? params?.value ?? 0)
+  const value = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 10_000_000) : 0
+  return { kind, value }
+}

@@ -12,7 +12,19 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { api, useApi } from '@/lib/api'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { AGE_RANGES, GENDERS, formatDate, type Campaign, type Placement, type Segment, type SegmentFilters, type SegmentSize } from '@/lib/types'
+import {
+  AGE_RANGES,
+  CARRIERS,
+  DAYPARTS,
+  DEVICE_TIERS,
+  GENDERS,
+  formatDate,
+  type Campaign,
+  type Placement,
+  type Segment,
+  type SegmentFilters,
+  type SegmentSize,
+} from '@/lib/types'
 
 export default function SegmentsPage() {
   const { data, reload } = useApi<Segment[]>('/admin/segments')
@@ -25,6 +37,17 @@ export default function SegmentsPage() {
       f.campaignIds?.length && `${f.campaignIds.length} campaign(s)`,
       f.placementIds?.length && `${f.placementIds.length} billboard(s)`,
       f.minScans && `${f.minScans}+ scans`,
+      f.minPlacements && `${f.minPlacements}+ billboards`,
+      f.minIntent && `intent ${f.minIntent}+`,
+      f.dayparts?.length && f.dayparts.join('/'),
+      f.languages?.length && f.languages.join('/'),
+      f.deviceTiers?.length && f.deviceTiers.join('/').replace(/_/g, ' '),
+      f.emailTypes?.length && `${f.emailTypes.join('/')} email`,
+      f.carriers?.length && f.carriers.join('/'),
+      f.commerce && f.commerce.replace('_', ' '),
+      f.minPurchaseValue && `spent ${f.minPurchaseValue}+ SAR`,
+      f.purchasedWithinDays && `bought in last ${f.purchasedWithinDays}d`,
+      f.validContactsOnly && 'valid contacts',
       f.ageRanges?.length && f.ageRanges.join(', '),
       f.genders?.length && f.genders.join(', '),
       f.cities?.length && f.cities.join(', '),
@@ -219,6 +242,7 @@ function SegmentDialog({
             <Label htmlFor="seg-cities">Cities (comma separated)</Label>
             <Input id="seg-cities" value={cities} onChange={(e) => setCities(e.target.value)} placeholder="Riyadh, Jeddah" />
           </div>
+          <InsightFilters filters={filters} setFilters={setFilters} />
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-2">
               <Label htmlFor="seg-from">Captured from</Label>
@@ -252,5 +276,90 @@ function SegmentDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  )
+}
+
+const ANY = 'any'
+
+/** First-party insight filters: intent, exposure, habits, device/network, shopping, contact quality. */
+function InsightFilters({ filters, setFilters }: { filters: SegmentFilters; setFilters: (f: SegmentFilters) => void }) {
+  const num = (v: string) => (v === ANY || v === '' ? undefined : Number(v))
+  const pick = (label: string, value: number | string | undefined, options: [string, string][], onChange: (v: string) => void) => (
+    <div className="grid gap-2">
+      <Label>{label}</Label>
+      <Select value={value == null ? ANY : String(value)} onValueChange={onChange}>
+        <SelectTrigger className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map(([v, l]) => (
+            <SelectItem key={v} value={v}>
+              {l}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+  return (
+    <div className="grid gap-5 rounded-md border p-3">
+      <div className="text-sm font-medium">Insights</div>
+      <div className="grid grid-cols-2 gap-4">
+        {pick('Intent score', filters.minIntent, [[ANY, 'Any'], ['30', '30+'], ['50', '50+'], ['70', '70+']], (v) =>
+          setFilters({ ...filters, minIntent: num(v) }),
+        )}
+        {pick('Different billboards seen', filters.minPlacements, [[ANY, 'Any'], ['2', '2+'], ['3', '3+'], ['5', '5+']], (v) =>
+          setFilters({ ...filters, minPlacements: num(v) }),
+        )}
+        {pick(
+          'Shopping',
+          filters.commerce,
+          [[ANY, 'Any'], ['buyers', 'Bought'], ['cart_abandoners', 'Added to cart, didn’t buy'], ['non_buyers', 'Never bought']],
+          (v) => setFilters({ ...filters, commerce: v === ANY ? undefined : (v as SegmentFilters['commerce']) }),
+        )}
+        {pick('Bought within', filters.purchasedWithinDays, [[ANY, 'Any time'], ['7', '7 days'], ['30', '30 days'], ['90', '90 days']], (v) =>
+          setFilters({ ...filters, purchasedWithinDays: num(v) }),
+        )}
+      </div>
+      <div className="grid gap-2">
+        <Label htmlFor="seg-spend">Spent at least (SAR)</Label>
+        <Input
+          id="seg-spend"
+          type="number"
+          min="0"
+          value={filters.minPurchaseValue ?? ''}
+          onChange={(e) => setFilters({ ...filters, minPurchaseValue: num(e.target.value) })}
+        />
+      </div>
+      <CheckGroup
+        label="Usually scans in the"
+        options={DAYPARTS.map((d) => ({ value: d, label: d }))}
+        value={filters.dayparts}
+        onChange={(v) => setFilters({ ...filters, dayparts: v })}
+      />
+      <CheckGroup
+        label="Language"
+        options={[{ value: 'ar', label: 'Arabic' }, { value: 'en', label: 'English' }]}
+        value={filters.languages}
+        onChange={(v) => setFilters({ ...filters, languages: v })}
+      />
+      <CheckGroup label="Device" options={DEVICE_TIERS} value={filters.deviceTiers} onChange={(v) => setFilters({ ...filters, deviceTiers: v })} />
+      <CheckGroup
+        label="Mobile network"
+        options={CARRIERS.map((c) => ({ value: c, label: c }))}
+        value={filters.carriers}
+        onChange={(v) => setFilters({ ...filters, carriers: v })}
+      />
+      <CheckGroup
+        label="Email type"
+        options={[{ value: 'work', label: 'Work' }, { value: 'personal', label: 'Personal' }]}
+        value={filters.emailTypes}
+        onChange={(v) => setFilters({ ...filters, emailTypes: v })}
+      />
+      <label className="flex items-center gap-2 text-sm">
+        <Checkbox checked={!!filters.validContactsOnly} onCheckedChange={(c) => setFilters({ ...filters, validContactsOnly: c === true || undefined })} />
+        Only people with a valid email or phone
+      </label>
+    </div>
   )
 }

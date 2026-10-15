@@ -58,10 +58,35 @@ export interface Customer {
   consent_active: boolean
   touchpoint_count: number
   scan_count: number
+  email_status: 'valid' | 'risky' | 'invalid' | 'unknown' | null
+  phone_status: 'mobile' | 'fixed' | 'voip' | 'invalid' | 'unknown' | null
+  phone_carrier?: string | null
+  intent_score: number | null
+}
+
+/** First-party insights (customer_insights view). */
+export interface CustomerInsights {
+  scans: number
+  placements: number
+  avg_dwell_seconds: number
+  max_scroll_pct: number
+  cta_clicks: number
+  cart_adds: number
+  purchases: number
+  purchase_value: string
+  last_purchase_at: string | null
+  daypart: string | null
+  language: string | null
+  carrier: string | null
+  ip_city: string | null
+  device_tier: string | null
+  email_type: 'personal' | 'work' | null
+  intent_score: number
 }
 
 export interface CustomerDetail {
   customer: Customer
+  insights: CustomerInsights | null
   consents: {
     id: string
     policy_version: string
@@ -102,7 +127,27 @@ export interface SegmentFilters {
   cities?: string[]
   capturedFrom?: string
   capturedTo?: string
+  minIntent?: number
+  minPlacements?: number
+  dayparts?: string[]
+  languages?: string[]
+  deviceTiers?: string[]
+  emailTypes?: string[]
+  carriers?: string[]
+  commerce?: 'buyers' | 'cart_abandoners' | 'non_buyers'
+  minPurchaseValue?: number
+  purchasedWithinDays?: number
+  validContactsOnly?: boolean
 }
+
+export const DAYPARTS = ['morning', 'midday', 'evening', 'night'] as const
+export const DEVICE_TIERS = [
+  { value: 'ios', label: 'iPhone / iPad' },
+  { value: 'android_premium', label: 'Android premium' },
+  { value: 'android', label: 'Android' },
+  { value: 'desktop', label: 'Desktop' },
+]
+export const CARRIERS = ['STC', 'Mobily', 'Zain', 'Salam', 'GO', 'Virgin Mobile', 'Lebara']
 
 export interface SegmentSize {
   total: number

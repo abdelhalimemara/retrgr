@@ -204,5 +204,35 @@
     "type": "STRING",
     "mode": "NULLABLE",
     "description": "consent (banner) or notice (partner privacy notice, no banner)"
+  },
+  {
+    "name": "ip_city",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "ip_region",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "ip_country",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "asn",
+    "type": "INTEGER",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "carrier",
+    "type": "STRING",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "network",
+    "type": "STRING",
+    "mode": "NULLABLE"
   }
 ]

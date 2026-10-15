@@ -4,6 +4,7 @@ import { z } from 'zod'
 import type { AuthEnv } from '../auth.js'
 import { audit, query, withTransaction } from '../db.js'
 import { flushEventErasures, queueEventErasure } from '../lib/events.js'
+import { validateContacts } from '../lib/validation.js'
 
 export const customerRoutes = new Hono<AuthEnv>()
 
@@ -25,7 +26,8 @@ customerRoutes.get('/customers', async (c) => {
   const [{ total }] = await query<{ total: number }>(`SELECT count(*)::int AS total FROM customers c WHERE ${where}`, params)
   const rows = await query(
     `SELECT c.id, c.email, c.phone, c.first_name, c.last_name, c.age_range, c.gender, c.city, c.country,
-            c.first_seen_at, c.last_seen_at,
+            c.first_seen_at, c.last_seen_at, c.email_status, c.phone_status,
+            (SELECT i.intent_score FROM customer_insights i WHERE i.customer_id = c.id) AS intent_score,
             EXISTS (SELECT 1 FROM consents k WHERE k.customer_id = c.id AND k.withdrawn_at IS NULL) AS consent_active,
             (SELECT count(*)::int FROM touchpoints t WHERE t.customer_id = c.id) AS touchpoint_count,
             (SELECT count(*)::int FROM scans s WHERE s.customer_id = c.id AND NOT s.is_bot) AS scan_count
@@ -41,6 +43,7 @@ customerRoutes.get('/customers/:id', async (c) => {
   const id = z.uuid().parse(c.req.param('id'))
   const [customer] = await query('SELECT * FROM customers WHERE id = $1', [id])
   if (!customer) throw new HTTPException(404)
+  const [insights] = await query('SELECT * FROM customer_insights WHERE customer_id = $1', [id])
 
   const [consents, touchpoints] = await Promise.all([
     query(
@@ -58,7 +61,7 @@ customerRoutes.get('/customers/:id', async (c) => {
     ),
   ])
   await audit(c.get('actor'), 'view', 'customer', id)
-  return c.json({ customer, consents, touchpoints })
+  return c.json({ customer, insights: insights ?? null, consents, touchpoints })
 })
 
 /** Hard delete — PDPL right to destruction. Cascades to consents, touchpoints and scans. */
@@ -77,6 +80,13 @@ customerRoutes.delete('/customers/:id', async (c) => {
   const { pending } = await flushEventErasures(scanIds)
   await audit(c.get('actor'), 'erase', 'customer', id, { scans: scanIds.length, bigquery_pending: pending })
   return c.body(null, 204)
+})
+
+/** Runs contact validation now (otherwise it runs hourly in the maintenance job). */
+customerRoutes.post('/customers/validate', async (c) => {
+  const counts = await validateContacts(200)
+  await audit(c.get('actor'), 'validate', 'customer', undefined, counts)
+  return c.json(counts)
 })
 
 customerRoutes.get('/stats', async (c) => {

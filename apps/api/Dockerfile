@@ -7,6 +7,8 @@ COPY apps/web/package.json apps/web/
 RUN npm ci -w api
 COPY apps/api apps/api
 RUN npm run build -w api && npm prune --omit=dev -w api
+# Free DB-IP Lite city + ASN databases for offline IP enrichment (refreshed on every build).
+RUN node apps/api/scripts/fetch-geo.mjs apps/api/geo
 
 FROM node:24-slim
 ENV NODE_ENV=production
@@ -17,6 +19,7 @@ COPY --from=build /app/apps/api/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json ./
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/migrations ./migrations
+COPY --from=build /app/apps/api/geo ./geo
 USER node
 EXPOSE 8080
 # Same image runs migrations as a Cloud Run Job: command `node dist/scripts/migrate.js`

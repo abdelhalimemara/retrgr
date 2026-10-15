@@ -33,6 +33,28 @@ export function buildSegmentWhere(filters: SegmentFilters): { where: string; par
     clauses.push(`(SELECT count(*) FROM scans s WHERE s.customer_id = c.id AND NOT s.is_bot) >= ${p(filters.minScans)}::int`)
   }
 
+  // First-party insights — one EXISTS over the customer_insights view.
+  const ins: string[] = []
+  if (filters.minIntent) ins.push(`i.intent_score >= ${p(filters.minIntent)}::int`)
+  if (filters.minPlacements) ins.push(`i.placements >= ${p(filters.minPlacements)}::int`)
+  if (filters.dayparts?.length) ins.push(`i.daypart = ANY(${p(filters.dayparts)}::text[])`)
+  if (filters.languages?.length) ins.push(`i.language = ANY(${p(filters.languages)}::text[])`)
+  if (filters.deviceTiers?.length) ins.push(`i.device_tier = ANY(${p(filters.deviceTiers)}::text[])`)
+  if (filters.emailTypes?.length) ins.push(`i.email_type = ANY(${p(filters.emailTypes)}::text[])`)
+  if (filters.carriers?.length) ins.push(`i.carrier = ANY(${p(filters.carriers)}::text[])`)
+  if (filters.commerce === 'buyers') ins.push('i.purchases > 0')
+  if (filters.commerce === 'cart_abandoners') ins.push('i.cart_adds > 0 AND i.purchases = 0')
+  if (filters.commerce === 'non_buyers') ins.push('i.purchases = 0')
+  if (filters.minPurchaseValue) ins.push(`i.purchase_value >= ${p(filters.minPurchaseValue)}::numeric`)
+  if (filters.purchasedWithinDays) ins.push(`i.last_purchase_at >= now() - make_interval(days => ${p(filters.purchasedWithinDays)}::int)`)
+  if (ins.length) clauses.push(`EXISTS (SELECT 1 FROM customer_insights i WHERE i.customer_id = c.id AND ${ins.join(' AND ')})`)
+
+  if (filters.validContactsOnly) {
+    clauses.push(
+      `((c.email IS NOT NULL AND c.email_status IS DISTINCT FROM 'invalid') OR (c.phone IS NOT NULL AND c.phone_status IS DISTINCT FROM 'invalid'))`,
+    )
+  }
+
   const tp: string[] = []
   if (filters.campaignIds?.length) tp.push(`t.campaign_id = ANY(${p(filters.campaignIds)}::uuid[])`)
   if (filters.partnerIds?.length) tp.push(`cp.partner_id = ANY(${p(filters.partnerIds)}::uuid[])`)
