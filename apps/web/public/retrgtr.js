@@ -152,9 +152,12 @@
   }
 
   // ---- scan (once per session) ----
+  // Settles once the scan is recorded, so a fast lead can be linked to its billboard.
+  var scanResolve
+  var scanDone = new Promise(function (r) { scanResolve = r })
   function sendScan(hints) {
-    if (!CAMPAIGN) return
-    send('/scan', {
+    if (!CAMPAIGN) return scanResolve()
+    var req = send('/scan', {
       scan_id: ctx.scan_id,
       visitor_id: visitorId,
       campaign: CAMPAIGN,
@@ -166,6 +169,7 @@
       context: context(),
       device: device(hints || {}),
     })
+    Promise.resolve(req).then(scanResolve, scanResolve)
     push({ event: 'ooh_scan', ooh_bid: bid, ooh_scan_number: scanNumber, ooh_offer_variant: variant })
   }
   if (isNewSession) {
@@ -173,7 +177,7 @@
     if (uad && uad.getHighEntropyValues) {
       uad.getHighEntropyValues(['platform', 'platformVersion', 'model']).then(sendScan, function () { sendScan() })
     } else sendScan()
-  }
+  } else scanResolve() // scan already recorded earlier in this session
 
   // ---- engagement ----
   var start = Date.now()
@@ -250,7 +254,9 @@
       body[k] = fields[k] || null
     })
     action()
-    return send('/capture', body).then(function (res) {
+    // Wait (max 1.5s) for the scan so the server can link this lead to the billboard.
+    var waitScan = Promise.race([scanDone, new Promise(function (r) { setTimeout(r, 1500) })])
+    return waitScan.then(function () { return send('/capture', body) }).then(function (res) {
       if (!res.ok) {
         return res.json().then(
           function (j) { throw new Error(j.error || 'Submission failed') },
@@ -298,10 +304,12 @@
 
   /** Reads a form into capture fields, or null when there's no email/phone to identify the person. */
   function readForm(form) {
-    if (form.hasAttribute('data-retrgtr-ignore') || form.querySelector('input[type=password]')) return null
+    if (form.closest('[data-retrgtr-ignore]') || form.querySelector('input[type=password]')) return null
     var f = { source: 'auto', extra: {}, consent_marketing: CONSENT_MODE === 'submit', consent_ad_personalization: false }
     var extras = 0
-    Array.prototype.forEach.call(form.elements, function (el) {
+    // `form` may also be a plain container (div-based SPA forms without a <form> tag).
+    var fields = form.elements || form.querySelectorAll('input, select, textarea')
+    Array.prototype.forEach.call(fields, function (el) {
       if (!el.name && !el.id) return
       var type = (el.type || '').toLowerCase()
       if (SKIP_TYPES.test(type) || el.disabled) return
@@ -339,8 +347,9 @@
   function autoCapture(form) {
     var f = readForm(form)
     if (!f) return
-    var sig = (f.email || '') + '|' + (f.phone || '')
-    if (recent[sig] && Date.now() - recent[sig] < 10000) return // submit + button click for the same form
+    // Same answers within 10s = one submission seen twice (click + submit); changed answers are re-sent.
+    var sig = JSON.stringify(f)
+    if (recent[sig] && Date.now() - recent[sig] < 10000) return
     recent[sig] = Date.now()
     capture(f).then(
       function () { form.dispatchEvent(new CustomEvent('retrgtr:success')) },
@@ -350,11 +359,25 @@
   if (AUTO_FORMS) {
     // Capture phase, never preventDefault: the partner's own submit handling runs untouched.
     document.addEventListener('submit', function (e) { if (e.target && e.target.tagName === 'FORM') autoCapture(e.target) }, true)
-    // Forms submitted by JavaScript (SPA/AJAX) often never fire `submit`.
+    // Forms sent by JavaScript (SPA/AJAX) often never fire `submit`, use type="button",
+    // or have no <form> at all. A click on a submit-looking button reads its form/container.
+    var SUBMIT_TEXT = /submit|send|sign.?up|register|join|subscribe|get|claim|book|reserve|request|apply|confirm|done|إرسال|ارسال|أرسل|سجل|تسجيل|اشترك|احجز|اطلب|تأكيد/i
+    function container(btn) {
+      if (btn.form) return btn.form
+      var f = btn.closest('form')
+      if (f) return f
+      for (var n = btn.parentElement, i = 0; n && n !== document.body && i < 6; n = n.parentElement, i++) {
+        if (n.querySelector('input[type=email], input[type=tel], input[name*=mail i], input[name*=phone i], input[name*=mobile i]')) return n
+      }
+      return null
+    }
     document.addEventListener('click', function (e) {
-      var btn = e.target.closest && e.target.closest('button, input[type=submit], [role=button]')
-      var form = btn && (btn.form || btn.closest('form'))
-      if (form && (btn.type === 'submit' || btn.getAttribute('type') == null)) setTimeout(function () { autoCapture(form) }, 0)
+      var btn = e.target.closest && e.target.closest('button, input[type=submit], input[type=button], [role=button], a[href="#"], a:not([href])')
+      if (!btn || btn.type === 'reset') return
+      var box = container(btn)
+      if (!box) return
+      var text = (btn.innerText || btn.value || btn.getAttribute('aria-label') || '').trim()
+      if (btn.type === 'submit' || SUBMIT_TEXT.test(text)) setTimeout(function () { autoCapture(box) }, 0)
     }, true)
   }
 
