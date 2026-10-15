@@ -1,13 +1,16 @@
-import { Download, Plus, Trash2 } from 'lucide-react'
+import { Download, FileArchive, FileDown, Plus, Trash2, Upload } from 'lucide-react'
 import QRCode from 'qrcode'
-import { useState, type FormEvent } from 'react'
+import { useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import { toast } from 'sonner'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { api, useApi } from '@/lib/api'
+import { api, ApiError, useApi } from '@/lib/api'
+import { PLACEMENT_CSV_TEMPLATE, placementsFromCsv } from '@/lib/csv'
+import { zipFiles } from '@/lib/zip'
 import { sar, type Campaign, type Placement } from '@/lib/types'
 
 /** QR target for one billboard. `bid` drives placement attribution; UTMs keep GA4 consistent. */
@@ -16,17 +19,70 @@ export function placementUrl(campaignSlug: string, code: string) {
   return `${window.location.origin}/c/${campaignSlug}?${qs}`
 }
 
-async function downloadQr(campaignSlug: string, code: string) {
-  // High error correction + generous size so the code survives print scaling and partial occlusion.
-  const svg = await QRCode.toString(placementUrl(campaignSlug, code), { type: 'svg', errorCorrectionLevel: 'H', margin: 2, width: 1200 })
-  const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }))
-  Object.assign(document.createElement('a'), { href: url, download: `qr-${campaignSlug}-${code}.svg` }).click()
+// High error correction + generous size so the code survives print scaling and partial occlusion.
+const qrSvg = (campaignSlug: string, code: string) =>
+  QRCode.toString(placementUrl(campaignSlug, code), { type: 'svg', errorCorrectionLevel: 'H', margin: 2, width: 1200 })
+
+function save(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  Object.assign(document.createElement('a'), { href: url, download: filename }).click()
   URL.revokeObjectURL(url)
+}
+
+async function downloadQr(campaignSlug: string, code: string) {
+  save(new Blob([await qrSvg(campaignSlug, code)], { type: 'image/svg+xml' }), `qr-${campaignSlug}-${code}.svg`)
+}
+
+const csvCell = (v: unknown) => (/[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ''))
+
+/** Every placement's QR as SVG, plus a manifest the print vendor can match files to sites with. */
+async function downloadAllQr(campaignSlug: string, placements: Placement[]) {
+  const enc = new TextEncoder()
+  const files = await Promise.all(
+    placements.map(async (p) => ({ name: `qr-${campaignSlug}-${p.code}.svg`, data: enc.encode(await qrSvg(campaignSlug, p.code)) })),
+  )
+  const manifest = [
+    'file,code,name,city,district,url',
+    ...placements.map((p) =>
+      [`qr-${campaignSlug}-${p.code}.svg`, p.code, p.name, p.city, p.district, placementUrl(campaignSlug, p.code)].map(csvCell).join(','),
+    ),
+  ].join('\n')
+  files.push({ name: 'manifest.csv', data: enc.encode('\uFEFF' + manifest) })
+  save(zipFiles(files), `qr-codes-${campaignSlug}.zip`)
 }
 
 export function PlacementsSheet({ campaign, onClose }: { campaign: Campaign | null; onClose: () => void }) {
   const { data, reload } = useApi<Placement[]>(campaign ? `/admin/placements?campaign_id=${campaign.id}` : null)
   const [formKey, setFormKey] = useState(0)
+  const [importErrors, setImportErrors] = useState<{ row: number; message: string }[] | null>(null)
+  const [busy, setBusy] = useState(false)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  const onImport = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file after fixing it
+    if (!file || !campaign) return
+    setImportErrors(null)
+    const { rows, unknownColumns } = placementsFromCsv(await file.text())
+    if (!rows.length) return toast.error('No rows found in the file')
+    if (unknownColumns.length) toast.warning(`Ignored columns: ${unknownColumns.join(', ')}`)
+    setBusy(true)
+    try {
+      const cityDefault = campaign.city
+      const res = await api.post<{ imported: number }>('/admin/placements/bulk', {
+        campaign_id: campaign.id,
+        rows: rows.map((r) => ({ ...r, city: r.city ?? cityDefault })),
+      })
+      toast.success(`Imported ${res.imported} placements`)
+      void reload()
+    } catch (err) {
+      const errors = err instanceof ApiError ? (err.body as { errors?: { row: number; message: string }[] })?.errors : undefined
+      if (errors?.length) setImportErrors(errors)
+      else toast.error((err as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -64,6 +120,41 @@ export function PlacementsSheet({ campaign, onClose }: { campaign: Campaign | nu
           <SheetTitle>Placements · {campaign?.name}</SheetTitle>
           <SheetDescription>Each billboard gets its own QR code so scans, leads and cost are attributed per placement.</SheetDescription>
         </SheetHeader>
+
+        <div className="flex flex-wrap gap-2 px-4">
+          <input ref={fileInput} type="file" accept=".csv,text/csv" className="hidden" onChange={onImport} />
+          <Button variant="outline" size="sm" disabled={busy} onClick={() => fileInput.current?.click()}>
+            <Upload /> Import CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => save(new Blob(['\uFEFF' + PLACEMENT_CSV_TEMPLATE], { type: 'text/csv' }), 'placements-template.csv')}
+          >
+            <FileDown /> CSV template
+          </Button>
+          <Button variant="outline" size="sm" disabled={!data?.length} onClick={() => downloadAllQr(campaign!.slug, data ?? [])}>
+            <FileArchive /> All QR codes (.zip)
+          </Button>
+        </div>
+
+        {importErrors && (
+          <div className="px-4">
+            <Alert variant="destructive">
+              <AlertTitle>Nothing was imported — fix these rows and upload again</AlertTitle>
+              <AlertDescription>
+                <ul className="mt-1 list-disc pl-4">
+                  {importErrors.slice(0, 20).map((er, i) => (
+                    <li key={i}>
+                      Row {er.row}: {er.message}
+                    </li>
+                  ))}
+                  {importErrors.length > 20 && <li>…and {importErrors.length - 20} more</li>}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          </div>
+        )}
 
         <div className="grid gap-3 px-4">
           {data?.map((p) => (

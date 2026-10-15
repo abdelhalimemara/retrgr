@@ -5,9 +5,11 @@ export const API_URL = import.meta.env.VITE_API_URL ?? ''
 
 export class ApiError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  body: unknown
+  constructor(status: number, message: string, body?: unknown) {
     super(message)
     this.status = status
+    this.body = body
   }
 }
 
@@ -24,7 +26,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
     const detail = body.issues?.map((i: { path: string; message: string }) => `${i.path}: ${i.message}`).join(', ')
-    throw new ApiError(res.status, detail || body.error || res.statusText)
+    throw new ApiError(res.status, detail || body.error || res.statusText, body)
   }
   return res
 }

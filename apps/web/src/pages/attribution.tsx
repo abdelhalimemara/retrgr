@@ -12,6 +12,22 @@ import { useApi } from '@/lib/api'
 import { sar, type Attribution, type Campaign } from '@/lib/types'
 
 const chartConfig = { scans: { label: 'Scans', color: 'var(--chart-2)' } } satisfies ChartConfig
+
+type AttributionModel = 'multi' | 'first' | 'last'
+const MODELS: Record<AttributionModel, { label: string; note: string }> = {
+  multi: {
+    label: 'Every billboard scanned',
+    note: 'Each lead counts at every billboard they scanned (shared credit), so billboard leads can add up to more than total leads.',
+  },
+  first: {
+    label: 'First billboard scanned',
+    note: 'Each lead counts once, at the first billboard they scanned. Billboard leads add up to the total (minus leads with no billboard code).',
+  },
+  last: {
+    label: 'Last billboard before sign-up',
+    note: 'Each lead counts once, at the last billboard they scanned before signing up. Billboard leads add up to the total (minus leads with no billboard code).',
+  },
+}
 const ALL = 'all'
 
 export default function AttributionPage() {
@@ -19,11 +35,13 @@ export default function AttributionPage() {
   const [campaignId, setCampaignId] = useState(ALL)
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [model, setModel] = useState<AttributionModel>('multi')
 
   const qs = new URLSearchParams()
   if (campaignId !== ALL) qs.set('campaign_id', campaignId)
   if (from) qs.set('from', from)
   if (to) qs.set('to', to)
+  qs.set('model', model)
   const { data, loading } = useApi<Attribution>(`/admin/attribution?${qs}`)
 
   const totals = data?.totals
@@ -68,6 +86,21 @@ export default function AttributionPage() {
         <div className="grid gap-2">
           <Label htmlFor="attr-to">To</Label>
           <Input id="attr-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </div>
+        <div className="grid w-64 gap-2">
+          <Label>Credit each lead to</Label>
+          <Select value={model} onValueChange={(v) => setModel(v as AttributionModel)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(MODELS) as AttributionModel[]).map((m) => (
+                <SelectItem key={m} value={m}>
+                  {MODELS[m].label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -132,8 +165,7 @@ export default function AttributionPage() {
         </Table>
       </Card>
       <p className="mt-2 text-xs text-muted-foreground">
-        Leads count every placement a person scanned before signing up (multi-touch), so placement leads can add up to more
-        than total leads.
+        {MODELS[model].note}
         {!!totals?.unattributed_scans && ` ${totals.unattributed_scans.toLocaleString()} scans had no billboard code.`}
       </p>
 
