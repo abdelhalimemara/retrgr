@@ -2,8 +2,8 @@ import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { z } from 'zod'
 import type { AuthEnv } from '../auth.js'
-import { audit, query } from '../db.js'
-import { deleteEvents } from '../lib/events.js'
+import { audit, query, withTransaction } from '../db.js'
+import { flushEventErasures, queueEventErasure } from '../lib/events.js'
 
 export const customerRoutes = new Hono<AuthEnv>()
 
@@ -64,12 +64,18 @@ customerRoutes.get('/customers/:id', async (c) => {
 /** Hard delete — PDPL right to destruction. Cascades to consents, touchpoints and scans. */
 customerRoutes.delete('/customers/:id', async (c) => {
   const id = z.uuid().parse(c.req.param('id'))
-  const scans = await query<{ id: string }>('SELECT id FROM scans WHERE customer_id = $1', [id])
-  const rows = await query('DELETE FROM customers WHERE id = $1 RETURNING id', [id])
-  if (!rows.length) throw new HTTPException(404)
-  // BigQuery events are pseudonymous, but erase them too so nothing about the person remains.
-  await deleteEvents(scans.map((s) => s.id))
-  await audit(c.get('actor'), 'erase', 'customer', id, { scans: scans.length })
+  const scanIds = await withTransaction(async (client) => {
+    const { rows: scans } = await client.query<{ id: string }>('SELECT id FROM scans WHERE customer_id = $1', [id])
+    const { rowCount } = await client.query('DELETE FROM customers WHERE id = $1', [id])
+    if (!rowCount) throw new HTTPException(404)
+    // BigQuery events are pseudonymous, but erase them too so nothing about the person remains.
+    // Queued in the same transaction so the erasure survives streaming-buffer refusals.
+    const ids = scans.map((s) => s.id)
+    await queueEventErasure(client, ids)
+    return ids
+  })
+  const { pending } = await flushEventErasures(scanIds)
+  await audit(c.get('actor'), 'erase', 'customer', id, { scans: scanIds.length, bigquery_pending: pending })
   return c.body(null, 204)
 })
 

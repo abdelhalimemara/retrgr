@@ -3,7 +3,7 @@ const env = process.env
 export const config = {
   port: Number(env.PORT ?? 8080),
   isProduction: env.NODE_ENV === 'production',
-  // On Cloud Run, DB_HOST is the Cloud SQL unix socket dir: /cloudsql/PROJECT:me-central2:INSTANCE
+  // On Cloud Run, DB_HOST is the Cloud SQL unix socket dir: /cloudsql/PROJECT:REGION:INSTANCE
   db: {
     host: env.DB_HOST ?? 'localhost',
     port: Number(env.DB_PORT ?? 5432),
@@ -25,5 +25,6 @@ export const config = {
   bigquery: {
     projectId: env.BQ_PROJECT_ID ?? env.GOOGLE_CLOUD_PROJECT,
     dataset: env.BQ_DATASET ?? '',
+    location: env.BQ_LOCATION ?? 'me-central1',
   },
 }

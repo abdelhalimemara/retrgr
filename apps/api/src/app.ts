@@ -18,6 +18,8 @@ export const app = new Hono()
 app.use(secureHeaders())
 app.use(bodyLimit({ maxSize: 64 * 1024 }))
 
+// Cloud Run reserves /healthz at the Google front end, so /health is the public probe.
+app.get('/health', (c) => c.json({ ok: true }))
 app.get('/healthz', (c) => c.json({ ok: true }))
 
 // Public endpoints are called from landing pages (collector / hosted page) or the sGTM

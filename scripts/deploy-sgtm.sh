@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploys a server-side GTM tagging server + preview server on Cloud Run (me-central2),
+# Deploys a server-side GTM tagging server + preview server on Cloud Run (me-central1 by default),
 # using Google's official image. Get CONTAINER_CONFIG from GTM → Admin → Container
 # Settings of your *Server* container ("Manually provision tagging server").
 #
@@ -18,19 +18,19 @@ set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID}"
 : "${CONTAINER_CONFIG:?Set CONTAINER_CONFIG from the GTM server container settings}"
-REGION="${REGION:-me-central2}"
+REGION="${REGION:-me-central1}"
 IMAGE="gcr.io/cloud-tagging-10302018/gtm-cloud-image:stable"
 
 gcloud config set project "$PROJECT_ID" >/dev/null
 
 echo "==> Preview server"
-gcloud run deploy sgtm-preview --image "$IMAGE" --region "$REGION" --allow-unauthenticated \
+gcloud run deploy sgtm-preview --image "$IMAGE" --region "$REGION" --no-invoker-iam-check \
   --min-instances 0 --max-instances 1 --memory 512Mi --cpu 1 \
   --set-env-vars "RUN_AS_PREVIEW_SERVER=true,CONTAINER_CONFIG=${CONTAINER_CONFIG}"
 PREVIEW_URL="$(gcloud run services describe sgtm-preview --region "$REGION" --format 'value(status.url)')"
 
 echo "==> Tagging server"
-gcloud run deploy sgtm --image "$IMAGE" --region "$REGION" --allow-unauthenticated \
+gcloud run deploy sgtm --image "$IMAGE" --region "$REGION" --no-invoker-iam-check \
   --min-instances 1 --max-instances 10 --memory 512Mi --cpu 1 \
   --set-env-vars "PREVIEW_SERVER_URL=${PREVIEW_URL},CONTAINER_CONFIG=${CONTAINER_CONFIG}"
 SGTM_URL="$(gcloud run services describe sgtm --region "$REGION" --format 'value(status.url)')"

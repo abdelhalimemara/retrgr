@@ -93,7 +93,7 @@ export function AppLayout() {
         <header className="flex h-14 items-center gap-2 border-b px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm text-muted-foreground">Data hosted in GCP me-central2 (Dammam)</span>
+          <span className="text-sm text-muted-foreground">Data hosted in GCP me-central1 (Doha)</span>
         </header>
         <main className="flex-1 p-4 md:p-8">
           <Outlet />

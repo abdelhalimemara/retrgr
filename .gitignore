@@ -16,3 +16,4 @@ ruvector.db
 
 # Local env (examples are committed)
 apps/api/.env
+.firebase/

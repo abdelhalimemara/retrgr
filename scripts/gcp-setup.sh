@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # One-time GCP provisioning for Retrgtr. Everything that stores personal data
-# lives in me-central2 (Dammam) for Saudi PDPL data residency.
+# lives in me-central1 (Doha), the nearest open region; me-central2 (Dammam)
+# needs Google sales enablement. Set REGION=me-central2 once it is granted.
 #
 #   PROJECT_ID=my-project ./scripts/gcp-setup.sh
 #
@@ -8,7 +9,7 @@
 set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID}"
-REGION="${REGION:-me-central2}"
+REGION="${REGION:-me-central1}"
 SQL_INSTANCE="${SQL_INSTANCE:-retrgtr-db}"
 SQL_TIER="${SQL_TIER:-db-custom-1-3840}"
 BQ_DATASET="${BQ_DATASET:-retrgtr_events}"
@@ -24,7 +25,7 @@ gcloud config set project "$PROJECT_ID" >/dev/null
 echo "==> Enabling APIs"
 gcloud services enable run.googleapis.com sqladmin.googleapis.com secretmanager.googleapis.com \
   artifactregistry.googleapis.com cloudbuild.googleapis.com bigquery.googleapis.com \
-  identitytoolkit.googleapis.com iam.googleapis.com
+  identitytoolkit.googleapis.com iam.googleapis.com cloudscheduler.googleapis.com
 
 echo "==> Artifact Registry"
 exists gcloud artifacts repositories describe "$AR_REPO" --location "$REGION" ||
@@ -77,9 +78,17 @@ mk_table scan_events scan_ts bid,campaign_id scan_events.json
 mk_table engagement_events event_ts scan_id engagement_events.json
 # Aggregated Google Signals reads per billboard — never joined to users (brief §3, §7).
 mk_table billboard_demographics report_date billboard_id billboard_demographics.json
-bq add-iam-policy-binding --member "serviceAccount:$SA" --role roles/bigquery.dataEditor \
-  "$PROJECT_ID:$BQ_DATASET" >/dev/null 2>&1 ||
-  echo "   ! Grant roles/bigquery.dataEditor on $BQ_DATASET to $SA in the console if this bq version lacks add-iam-policy-binding"
+# Dataset-level WRITER (= dataEditor) for the API, via the dataset access list.
+ACL="$(mktemp)"
+bq show --format=prettyjson "$PROJECT_ID:$BQ_DATASET" | python3 -c "
+import json, sys
+d = json.load(sys.stdin); sa = sys.argv[1]
+acl = d.get('access', [])
+if not any(a.get('userByEmail') == sa for a in acl):
+    acl.append({'role': 'WRITER', 'userByEmail': sa})
+json.dump({'access': acl}, sys.stdout)" "$SA" >"$ACL"
+bq update --source "$ACL" "$PROJECT_ID:$BQ_DATASET" >/dev/null
+rm -f "$ACL"
 
 cat <<EOF
 

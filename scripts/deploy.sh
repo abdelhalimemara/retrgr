@@ -9,7 +9,7 @@ set -euo pipefail
 
 : "${PROJECT_ID:?Set PROJECT_ID}"
 : "${ADMIN_EMAILS:?Set ADMIN_EMAILS (comma-separated dashboard users)}"
-REGION="${REGION:-me-central2}"
+REGION="${REGION:-me-central1}"
 SQL_INSTANCE="${SQL_INSTANCE:-retrgtr-db}"
 BQ_DATASET="${BQ_DATASET:-retrgtr_events}"
 AR_REPO="${AR_REPO:-retrgtr}"
@@ -42,10 +42,33 @@ else
 fi
 gcloud run jobs execute retrgtr-migrate --region "$REGION" --wait
 
+echo "==> BigQuery erasure retry job (hourly)"
+# Erasures BigQuery refuses while rows sit in the streaming buffer are queued and retried here.
+ERASE_ARGS=(--image "$IMAGE" --region "$REGION" --service-account "$SA" --set-cloudsql-instances "$CONN"
+  --set-env-vars "${COMMON_ENV},BQ_PROJECT_ID=${PROJECT_ID},BQ_DATASET=${BQ_DATASET},BQ_LOCATION=${REGION}"
+  --set-secrets "$SECRETS" --command node --args dist/scripts/flush-erasures.js --max-retries 0 --task-timeout 600)
+if gcloud run jobs describe retrgtr-erasures --region "$REGION" >/dev/null 2>&1; then
+  gcloud run jobs update retrgtr-erasures "${ERASE_ARGS[@]}"
+else
+  gcloud run jobs create retrgtr-erasures "${ERASE_ARGS[@]}"
+fi
+gcloud run jobs add-iam-policy-binding retrgtr-erasures --region "$REGION" \
+  --member "serviceAccount:$SA" --role roles/run.invoker >/dev/null
+SCHED_ARGS=(--location "$REGION" --schedule "15 * * * *" --http-method POST
+  --uri "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/jobs/retrgtr-erasures:run"
+  --oauth-service-account-email "$SA")
+if gcloud scheduler jobs describe retrgtr-erasures --location "$REGION" >/dev/null 2>&1; then
+  gcloud scheduler jobs update http retrgtr-erasures "${SCHED_ARGS[@]}"
+else
+  gcloud scheduler jobs create http retrgtr-erasures "${SCHED_ARGS[@]}"
+fi
+
 echo "==> Deploying API service"
+# --no-invoker-iam-check makes the service public without an allUsers binding, which
+# domain-restricted-sharing org policies refuse. Admin routes still verify Firebase tokens.
 gcloud run deploy "$SERVICE" --image "$IMAGE" --region "$REGION" --service-account "$SA" \
-  --add-cloudsql-instances "$CONN" --allow-unauthenticated \
-  --set-env-vars "^;^${COMMON_ENV//,/;};ADMIN_ORIGINS=${WEB_ORIGIN};ADMIN_EMAILS=${ADMIN_EMAILS};FIREBASE_PROJECT_ID=${PROJECT_ID};BQ_PROJECT_ID=${PROJECT_ID};BQ_DATASET=${BQ_DATASET}" \
+  --add-cloudsql-instances "$CONN" --no-invoker-iam-check \
+  --set-env-vars "^;^${COMMON_ENV//,/;};ADMIN_ORIGINS=${WEB_ORIGIN};ADMIN_EMAILS=${ADMIN_EMAILS};FIREBASE_PROJECT_ID=${PROJECT_ID};BQ_PROJECT_ID=${PROJECT_ID};BQ_DATASET=${BQ_DATASET};BQ_LOCATION=${REGION}" \
   --set-secrets "$SECRETS" \
   --min-instances 0 --max-instances 20 --cpu 1 --memory 512Mi --concurrency 80
 API_URL="$(gcloud run services describe "$SERVICE" --region "$REGION" --format 'value(status.url)')"

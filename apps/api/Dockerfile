@@ -12,6 +12,8 @@ FROM node:24-slim
 ENV NODE_ENV=production
 WORKDIR /app/apps/api
 COPY --from=build /app/node_modules /app/node_modules
+# Workspace-local deps (e.g. zod v4, while the web app keeps v3 at the root).
+COPY --from=build /app/apps/api/node_modules ./node_modules
 COPY --from=build /app/apps/api/package.json ./
 COPY --from=build /app/apps/api/dist ./dist
 COPY --from=build /app/apps/api/migrations ./migrations
