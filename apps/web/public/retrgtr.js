@@ -375,7 +375,8 @@
         return
       }
       if (type === 'radio' && !el.checked) return
-      var value = el.tagName === 'SELECT' && el.selectedIndex >= 0 ? el.options[el.selectedIndex].text || el.value : el.value
+      // A select still on its placeholder option (empty value, e.g. "Select a service") has no answer.
+      var value = el.tagName === 'SELECT' ? (el.value && el.selectedIndex >= 0 ? el.options[el.selectedIndex].text || el.value : '') : el.value
       value = typeof value === 'string' ? value.trim().slice(0, 500) : ''
       if (!value) return
       var kind = classify(el, label) || (EMAIL_RE.test(value) ? 'email' : null)

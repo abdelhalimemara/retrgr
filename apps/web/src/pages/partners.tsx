@@ -239,7 +239,7 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
               <span>
                 Save entries as typed (partial leads)
                 <span className="block text-xs text-muted-foreground">
-                  Only when the client’s form shows a disclosure above the fields. Name, email, phone and answers are saved once
+                  Only when the client discloses it — above the form, or in a privacy notice linked from the page. Name, email, phone and answers are saved once
                   an email or phone is entered — even if the form isn’t submitted. Partial leads are for follow-up only: never
                   exported to ad platforms; removed on opt-out, or replaced by the full lead when the person submits.
                 </span>
@@ -247,7 +247,7 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
             </label>
             {saveTyped && (
               <div className="grid gap-2">
-                <Label htmlFor="typed_notice">Disclosure exactly as shown above the form</Label>
+                <Label htmlFor="typed_notice">Disclosure exactly as published (and where)</Label>
                 <Textarea
                   id="typed_notice"
                   name="typed_notice"
