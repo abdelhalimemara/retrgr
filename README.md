@@ -31,9 +31,18 @@ Billboard QR (?bid=…)  →  partner landing page (partner's own web GTM + Retr
     forms are skipped.
   - every dataLayer push, with personal values redacted.
   - device context, repeat exposure and engagement.
-- **Consent.** Marketing and ad-personalisation consent come from the form's own checkboxes, or
-  from submitting the form when `data-marketing-consent="submit"` is set. Leads without an opt-in
-  are stored but never exported or sent to ad platforms.
+- **Consent.** Each partner has two settings on the Partners page:
+  - **Analytics.** By default the snippet waits for the site's Consent Mode banner. With "Run
+    without a consent banner", it runs on page load under the partner's privacy notice. Scans are
+    then recorded as `notice`, not `consent`, and a visitor who declines in a banner is still
+    respected.
+  - **Marketing.** By default the opt-in is a ticked consent checkbox on the form. With "Form
+    submission counts as marketing opt-in", submitting a form that shows the partner's notice is
+    the opt-in. The exact notice text is stored on every consent record. Personalised ads are
+    included only if the notice covers them.
+
+  The server enforces both settings, so the snippet can't grant itself either one. Leads without
+  an opt-in are stored but never exported or sent to ad platforms.
 - **Erasure.** Deleting a customer removes them from Cloud SQL. Their BigQuery events are queued
   and erased by an hourly job, because BigQuery refuses deletes on recently streamed rows.
 

@@ -17,11 +17,23 @@ catalogRoutes.get('/partners', async (c) =>
   ),
 )
 
+/** Websites + legal-basis settings. Notice fields are cleared when their mode is off. */
+const partnerBasis = (b: z.infer<typeof partnerSchema>) => [
+  b.allowed_origins,
+  b.analytics_basis,
+  b.analytics_basis === 'notice' ? b.privacy_notice_url : null,
+  b.marketing_basis,
+  b.marketing_basis === 'form_notice' ? b.marketing_notice : null,
+  b.marketing_basis === 'form_notice' && b.notice_covers_ads,
+]
+
 catalogRoutes.post('/partners', async (c) => {
   const b = partnerSchema.parse(await c.req.json())
   const [row] = await query(
-    'INSERT INTO partners (name, contact_email, notes, allowed_origins) VALUES ($1, $2, $3, $4) RETURNING *',
-    [b.name, b.contact_email ?? null, b.notes ?? null, b.allowed_origins],
+    `INSERT INTO partners (name, contact_email, notes, allowed_origins, analytics_basis, privacy_notice_url,
+       marketing_basis, marketing_notice, notice_covers_ads)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    [b.name, b.contact_email ?? null, b.notes ?? null, ...partnerBasis(b)],
   )
   await audit(c.get('actor'), 'create', 'partner', row.id)
   return c.json(row, 201)
@@ -30,8 +42,10 @@ catalogRoutes.post('/partners', async (c) => {
 catalogRoutes.put('/partners/:id', async (c) => {
   const b = partnerSchema.parse(await c.req.json())
   const [row] = await query(
-    'UPDATE partners SET name = $1, contact_email = $2, notes = $3, allowed_origins = $4 WHERE id = $5 RETURNING *',
-    [b.name, b.contact_email ?? null, b.notes ?? null, b.allowed_origins, z.uuid().parse(c.req.param('id'))],
+    `UPDATE partners SET name = $1, contact_email = $2, notes = $3, allowed_origins = $4, analytics_basis = $5,
+       privacy_notice_url = $6, marketing_basis = $7, marketing_notice = $8, notice_covers_ads = $9
+     WHERE id = $10 RETURNING *`,
+    [b.name, b.contact_email ?? null, b.notes ?? null, ...partnerBasis(b), z.uuid().parse(c.req.param('id'))],
   )
   if (!row) throw new HTTPException(404)
   await audit(c.get('actor'), 'update', 'partner', row.id)

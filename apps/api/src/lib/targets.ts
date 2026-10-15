@@ -12,6 +12,11 @@ export interface Target {
   placement_id: string | null
   /** Billboard code, so the collector can carry it on later requests in the session. */
   placement_code: string | null
+  /** The partner's legal-basis settings (see migration 007). */
+  analytics_basis: 'consent' | 'notice'
+  marketing_basis: 'checkbox' | 'form_notice'
+  marketing_notice: string | null
+  notice_covers_ads: boolean
 }
 
 /** A partner with no websites configured is unrestricted; otherwise the origin must be listed. */
@@ -22,7 +27,8 @@ export function originAllowed(allowed: string[], origin: string | null) {
 }
 
 type Row = Target & { allowed_origins: string[] }
-const SELECT = `SELECT cp.id AS campaign_id, cp.partner_id, cp.city, p.allowed_origins`
+const SELECT = `SELECT cp.id AS campaign_id, cp.partner_id, cp.city, p.allowed_origins,
+  p.analytics_basis, p.marketing_basis, p.marketing_notice, p.notice_covers_ads`
 const NO_PLACEMENT = `NULL::uuid AS placement_id, NULL::text AS placement_code`
 
 /**

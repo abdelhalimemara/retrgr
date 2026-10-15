@@ -15,6 +15,11 @@ export interface Partner {
   key: string
   name: string
   allowed_origins: string[]
+  analytics_basis: 'consent' | 'notice'
+  privacy_notice_url: string | null
+  marketing_basis: 'checkbox' | 'form_notice'
+  marketing_notice: string | null
+  notice_covers_ads: boolean
   contact_email: string | null
   notes: string | null
   campaign_count: number
@@ -63,6 +68,8 @@ export interface CustomerDetail {
     purposes: string[]
     granted_at: string
     withdrawn_at: string | null
+    basis: 'checkbox' | 'form_notice'
+    notice_text: string | null
     campaign_name: string | null
   }[]
   touchpoints: {

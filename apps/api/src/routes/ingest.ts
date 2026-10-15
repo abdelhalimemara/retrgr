@@ -25,12 +25,14 @@ ingestRoutes.post('/scan', async (c) => {
   // Unknown campaign / partner, or a website the partner hasn't registered: accept silently.
   const target = await resolveTarget(b, requestOrigin(c))
   if (!target) return c.body(null, 202)
+  // Running without a banner is only allowed for partners set up that way in the dashboard.
+  if (b.consent.basis === 'notice' && target.analytics_basis !== 'notice') return c.body(null, 202)
 
   const ctx = b.context
   const inserted = await query(
     `INSERT INTO scans (id, campaign_id, placement_id, visitor_id, scan_number, offer_variant, device_type, os,
-       language, utm_source, utm_medium, utm_campaign, is_bot)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       language, utm_source, utm_medium, utm_campaign, is_bot, analytics_basis)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
      ON CONFLICT (id) DO NOTHING RETURNING id`,
     [
       b.scan_id,
@@ -46,6 +48,7 @@ ingestRoutes.post('/scan', async (c) => {
       ctx.utm_medium ?? null,
       ctx.utm_campaign ?? null,
       bot,
+      b.consent.basis,
     ],
   )
 
@@ -64,6 +67,7 @@ ingestRoutes.post('/scan', async (c) => {
       via_sgtm: viaSgtm(c),
       user_agent: ua,
       policy_version: b.consent.policy_version,
+      analytics_basis: b.consent.basis,
       ...ctx,
       ...b.device,
     })

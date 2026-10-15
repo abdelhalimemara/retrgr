@@ -37,6 +37,7 @@ export default function CollectorPage() {
   const [params] = useSearchParams()
   const [picked, setPicked] = useState(params.get('partner') ?? '')
   const partner = partners?.find((p) => p.id === picked) ?? partners?.[0]
+  const noBanner = partner?.analytics_basis === 'notice'
   const sgtm = import.meta.env.VITE_COLLECT_URL as string | undefined
   const endpoint = sgtm ? sgtm.replace(/\/retrgtr\/?$/, '') : API_URL || window.location.origin
   const path = sgtm ? '/retrgtr' : '/api/public'
@@ -45,8 +46,7 @@ export default function CollectorPage() {
         data-endpoint="${endpoint}"
         data-path="${path}"
         data-partner="${partner?.key ?? 'PARTNER-KEY'}"
-        data-policy-version="v1"
-        data-marketing-consent="checkbox" async></script>`
+        data-policy-version="v1"${noBanner ? '\n        data-consent="notice"' : ''} async></script>`
 
   const options = `<!-- Optional: exclude a form (e.g. a footer newsletter) from capture -->
 <form data-retrgtr-ignore> … </form>
@@ -84,9 +84,19 @@ export default function CollectorPage() {
           <CardHeader>
             <CardTitle>1. GTM Custom HTML tag</CardTitle>
             <CardDescription>
-              The partner adds this in their own GTM: Tags → New → Custom HTML, trigger All Pages (or the landing pages).
-              Under Advanced Settings → Consent Settings, require <code>analytics_storage</code> so it only loads after their
-              Consent Mode v2 banner grants it. The campaign comes from the billboard code (<code>bid</code>) in the QR link,
+              The partner adds this in their own GTM: Tags → New → Custom HTML, trigger All Pages (or the landing pages).{' '}
+              {noBanner ? (
+                <>
+                  This partner runs <strong>without a consent banner</strong> (privacy notice): no consent settings on the tag.
+                  Scans are recorded as “privacy notice”, and a visitor who declines in a banner is still respected.
+                </>
+              ) : (
+                <>
+                  Under Advanced Settings → Consent Settings, require <code>analytics_storage</code> so it only loads after their
+                  Consent Mode v2 banner grants it.
+                </>
+              )}{' '}
+              The campaign comes from the billboard code (<code>bid</code>) in the QR link,
               otherwise the partner’s active campaign. Data is only accepted from the partner’s registered websites
               {partner && !partner.allowed_origins.length ? ' (none registered yet — add them on the Partners page)' : ''}.
             </CardDescription>
@@ -109,10 +119,12 @@ export default function CollectorPage() {
             <div>
               <div className="font-medium">Marketing consent</div>
               <p className="text-muted-foreground">
-                <code>data-marketing-consent="checkbox"</code> (default): a lead counts as opted in only when a ticked
-                checkbox on the form mentions marketing, offers or newsletters; one mentioning ads or personalisation also
-                grants ad personalisation. Use <code>"submit"</code> only when the form’s own wording is the opt-in. Leads
-                without an opt-in are stored but never exported or sent to ad platforms.
+                {partner?.marketing_basis === 'form_notice'
+                  ? 'This partner uses “form submission = opt-in”: every captured form counts as a marketing opt-in, recorded with the notice text set on the Partners page' +
+                    (partner.notice_covers_ads ? ', including personalised ads.' : ' (not personalised ads — the notice doesn’t cover them).') +
+                    ' A ticked consent checkbox on the form also counts.'
+                  : 'A lead counts as opted in when a ticked checkbox on the form mentions marketing, offers or newsletters; one mentioning ads or personalisation also grants ad personalisation. To make form submission itself the opt-in, edit the partner and add the notice shown on their form.'}{' '}
+                Leads without an opt-in are stored but never exported or sent to ad platforms.
               </p>
             </div>
             <CodeBlock code={options} />

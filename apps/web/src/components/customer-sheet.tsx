@@ -74,6 +74,10 @@ export function CustomerSheet({ id, onClose, onErased }: { id: string | null; on
                   <div className="mt-1 text-muted-foreground">
                     {k.purposes.join(', ')} · policy {k.policy_version} · {formatDate(k.granted_at)}
                   </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {k.basis === 'form_notice' ? 'Opted in by submitting a form showing this notice:' : 'Opted in with a ticked consent checkbox'}
+                  </div>
+                  {k.notice_text && <blockquote className="mt-1 border-l-2 pl-2 text-xs italic">{k.notice_text}</blockquote>}
                 </div>
               ))}
             </section>

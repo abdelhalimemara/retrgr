@@ -183,9 +183,13 @@ sendHttpRequest(
   };
 
   if (action === 'capture') {
+    // The API decides the opt-in (ticked checkbox, or the partner's form notice) — use its answer,
+    // not the browser's request, for consent flags and hashed user_data.
     const parsed = JSON.parse(responseBody) || {};
+    event['x-retrgtr-marketing-consent'] = parsed.marketing_consent === true;
+    event['x-retrgtr-ad-personalization'] = parsed.ad_personalization === true;
     const k = parsed.match_keys;
-    if (k && consent.marketing === true && consent.ad_personalization === true) {
+    if (k && parsed.ad_personalization === true) {
       // Hashes only. Raw PII is never placed in event data.
       event.user_data = {
         sha256_email_address: k.em,
@@ -197,7 +201,7 @@ sendHttpRequest(
       };
     }
     // Match keys stay server-side; the browser only learns that it worked.
-    responseBody = '{"ok":true,"marketing_consent":' + (consent.marketing === true ? 'true' : 'false') + '}';
+    responseBody = '{"ok":true,"marketing_consent":' + (parsed.marketing_consent === true ? 'true' : 'false') + '}';
   }
 
   runContainer(event, () => done(res.statusCode, responseBody));

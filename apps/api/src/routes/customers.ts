@@ -44,7 +44,7 @@ customerRoutes.get('/customers/:id', async (c) => {
 
   const [consents, touchpoints] = await Promise.all([
     query(
-      `SELECT k.id, k.policy_version, k.purposes, k.granted_at, k.withdrawn_at, cp.name AS campaign_name
+      `SELECT k.id, k.policy_version, k.purposes, k.granted_at, k.withdrawn_at, k.basis, k.notice_text, cp.name AS campaign_name
          FROM consents k LEFT JOIN campaigns cp ON cp.id = k.campaign_id
         WHERE k.customer_id = $1 ORDER BY k.granted_at DESC`,
       [id],

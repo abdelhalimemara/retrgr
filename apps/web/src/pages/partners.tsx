@@ -6,6 +6,7 @@ import { PageHeader } from '@/components/app-layout'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -38,6 +39,7 @@ export default function PartnersPage() {
               <TableHead>Name</TableHead>
               <TableHead>Partner key</TableHead>
               <TableHead>Websites</TableHead>
+              <TableHead>Consent</TableHead>
               <TableHead className="text-right">Campaigns</TableHead>
               <TableHead>Added</TableHead>
               <TableHead />
@@ -66,6 +68,12 @@ export default function PartnersPage() {
                     <Badge variant="outline">Any website</Badge>
                   )}
                 </TableCell>
+                <TableCell>
+                  <div className="flex flex-wrap gap-1">
+                    <Badge variant="outline">{p.analytics_basis === 'notice' ? 'No banner (notice)' : 'Banner consent'}</Badge>
+                    <Badge variant="outline">{p.marketing_basis === 'form_notice' ? 'Form notice opt-in' : 'Checkbox opt-in'}</Badge>
+                  </div>
+                </TableCell>
                 <TableCell className="text-right tabular-nums">{p.campaign_count}</TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(p.created_at)}</TableCell>
                 <TableCell className="text-right whitespace-nowrap">
@@ -80,7 +88,7 @@ export default function PartnersPage() {
             ))}
             {data?.length === 0 && (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
                   No partners yet.
                 </TableCell>
               </TableRow>
@@ -104,6 +112,10 @@ export default function PartnersPage() {
 }
 
 function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null; onClose: () => void; onSaved: () => void }) {
+  const [noBanner, setNoBanner] = useState(partner?.analytics_basis === 'notice')
+  const [formOptIn, setFormOptIn] = useState(partner?.marketing_basis === 'form_notice')
+  const [coversAds, setCoversAds] = useState(partner?.notice_covers_ads ?? false)
+
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const f = new FormData(e.currentTarget)
@@ -114,6 +126,11 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
       allowed_origins: String(f.get('allowed_origins') ?? '')
         .split(/[\s,]+/)
         .filter(Boolean),
+      analytics_basis: noBanner ? 'notice' : 'consent',
+      privacy_notice_url: noBanner ? f.get('privacy_notice_url') || null : null,
+      marketing_basis: formOptIn ? 'form_notice' : 'checkbox',
+      marketing_notice: formOptIn ? f.get('marketing_notice') || null : null,
+      notice_covers_ads: formOptIn && coversAds,
     }
     try {
       if (partner) await api.put(`/admin/partners/${partner.id}`, body)
@@ -127,7 +144,7 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
 
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <form onSubmit={onSubmit} className="grid gap-4">
           <DialogHeader>
             <DialogTitle>{partner ? 'Edit partner' : 'New partner'}</DialogTitle>
@@ -153,6 +170,66 @@ function PartnerDialog({ partner, onClose, onSaved }: { partner: Partner | null;
               One per line. Data sent with this partner’s key from any other website is ignored. Leave empty while testing.
             </p>
           </div>
+
+          <div className="grid gap-3 rounded-md border p-3">
+            <div className="text-sm font-medium">Consent</div>
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={noBanner} onCheckedChange={(c) => setNoBanner(c === true)} className="mt-0.5" />
+              <span>
+                Run without a consent banner
+                <span className="block text-xs text-muted-foreground">
+                  The collector starts on page load, relying on the site’s privacy notice instead of banner consent. Scans are
+                  recorded as “privacy notice”, not “consented”. A visitor who declines in a banner is still respected.
+                </span>
+              </span>
+            </label>
+            {noBanner && (
+              <div className="grid gap-2">
+                <Label htmlFor="privacy_notice_url">Privacy notice URL on the client’s site</Label>
+                <Input
+                  id="privacy_notice_url"
+                  name="privacy_notice_url"
+                  type="url"
+                  required
+                  placeholder="https://brand.sa/privacy"
+                  defaultValue={partner?.privacy_notice_url ?? ''}
+                />
+              </div>
+            )}
+            <label className="flex items-start gap-2 text-sm">
+              <Checkbox checked={formOptIn} onCheckedChange={(c) => setFormOptIn(c === true)} className="mt-0.5" />
+              <span>
+                Form submission counts as marketing opt-in
+                <span className="block text-xs text-muted-foreground">
+                  Only when the client’s form shows a marketing notice next to the submit button. The notice text is stored
+                  with every consent as evidence. Without this, a ticked consent checkbox is required.
+                </span>
+              </span>
+            </label>
+            {formOptIn && (
+              <>
+                <div className="grid gap-2">
+                  <Label htmlFor="marketing_notice">Notice text exactly as shown on the form</Label>
+                  <Textarea
+                    id="marketing_notice"
+                    name="marketing_notice"
+                    required
+                    minLength={20}
+                    placeholder="By submitting, you agree to receive offers from Brand by email/SMS and to see personalised ads on social media. Unsubscribe anytime."
+                    defaultValue={partner?.marketing_notice ?? ''}
+                  />
+                </div>
+                <label className="flex items-start gap-2 text-sm">
+                  <Checkbox checked={coversAds} onCheckedChange={(c) => setCoversAds(c === true)} className="mt-0.5" />
+                  <span>
+                    The notice also covers personalised ads on social media
+                    <span className="block text-xs text-muted-foreground">Required for these leads to be used in ad-platform match lists.</span>
+                  </span>
+                </label>
+              </>
+            )}
+          </div>
+
           <div className="grid gap-2">
             <Label htmlFor="notes">Notes</Label>
             <Textarea id="notes" name="notes" placeholder="Data-sharing agreement reference, terms…" defaultValue={partner?.notes ?? ''} />

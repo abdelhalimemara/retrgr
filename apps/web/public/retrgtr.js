@@ -12,12 +12,18 @@
  * registered for the partner in the dashboard.
  *
  * Optional:
- *   data-marketing-consent="checkbox" (default) marketing opt-in = a ticked consent checkbox on the form
- *                          "submit"   the form's own wording is the opt-in, so submitting it counts
+ *   data-consent="banner" (default) wait for the site's consent banner (see below)
+ *                "notice"  run without a banner, under the partner's privacy notice. Only accepted
+ *                          for partners set up that way in the dashboard; still stops if the visitor
+ *                          actively declines analytics in a banner.
  *   data-forms="auto" (default) | "off"     data-datalayer="on" (default) | "off"
  *
- * In GTM, give the tag Additional Consent Checks → `analytics_storage` so it only
- * loads once analytics consent is granted. Loading the script = analytics consent given.
+ * Banner mode: in GTM, give the tag Additional Consent Checks → `analytics_storage` so it only
+ * loads once analytics consent is granted. Notice mode: no consent check, trigger on All Pages.
+ *
+ * Marketing opt-in: a ticked consent checkbox on the form, or — for partners set up with
+ * "form submission = opt-in" in the dashboard — submitting a form that shows their notice.
+ * That decision is made server-side and recorded with the exact notice text.
  *
  * Billboard QR URLs: /landing?bid=<placement-code>&v=<offer-variant>&utm_source=ooh…
  *
@@ -49,7 +55,16 @@
   var POLICY = attr('data-policy-version', 'v1')
   var URL_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ttclid', 'sccid']
   var FORM_FIELDS = ['email', 'phone', 'first_name', 'last_name', 'age_range', 'gender', 'city']
-  var CONSENT_MODE = attr('data-marketing-consent', 'checkbox')
+  var BASIS = attr('data-consent', 'banner') === 'notice' ? 'notice' : 'consent'
+  // Notice mode never overrides a visitor who actively declined analytics in a consent banner.
+  function declinedAnalytics() {
+    var state = null
+    ;(window.dataLayer || []).forEach(function (e) {
+      if (e && e[0] === 'consent' && e[1] === 'update' && e[2] && e[2].analytics_storage) state = e[2].analytics_storage
+    })
+    return state === 'denied'
+  }
+  if (BASIS === 'notice' && declinedAnalytics()) return
   var AUTO_FORMS = attr('data-forms', 'auto') !== 'off'
   var DATALAYER = attr('data-datalayer', 'on') !== 'off'
   var CTX_KEY = 'retrgtr_ctx'
@@ -188,7 +203,7 @@
       offer_variant: variant,
       scan_number: Math.max(scanNumber, 1),
       prior_bids: priorBids.filter(function (b) { return b !== bid }),
-      consent: { analytics: true, policy_version: POLICY },
+      consent: { analytics: true, basis: BASIS, policy_version: POLICY },
       context: context(),
       page: bid ? null : landingPage(),
       device: device(hints || {}),
@@ -341,7 +356,7 @@
   /** Reads a form into capture fields, or null when there's no email/phone to identify the person. */
   function readForm(form) {
     if (form.closest('[data-retrgtr-ignore]') || form.querySelector('input[type=password]')) return null
-    var f = { source: 'auto', extra: {}, consent_marketing: CONSENT_MODE === 'submit', consent_ad_personalization: false }
+    var f = { source: 'auto', extra: {}, consent_marketing: false, consent_ad_personalization: false }
     var extras = 0
     // `form` may also be a plain container (div-based SPA forms without a <form> tag).
     var fields = form.elements || form.querySelectorAll('input, select, textarea')

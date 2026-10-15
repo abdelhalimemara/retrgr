@@ -56,7 +56,13 @@ export const scanSchema = z.object({
   offer_variant: optText(40),
   scan_number: z.number().int().min(1).max(10_000).default(1),
   prior_bids: z.array(placementCode).max(50).default([]),
-  consent: z.object({ analytics: z.literal(true), policy_version: z.string().max(32) }),
+  // analytics = "analytics permitted"; basis says why: banner consent, or the partner's privacy
+  // notice when the partner runs the collector without a banner (checked server-side).
+  consent: z.object({
+    analytics: z.literal(true),
+    basis: z.enum(['consent', 'notice']).default('consent'),
+    policy_version: z.string().max(32),
+  }),
   context: captureContextSchema.default({}),
   page: pageSchema,
   device: z
@@ -150,6 +156,11 @@ export const withdrawSchema = z
 
 export const partnerSchema = z.object({
   name: z.string().trim().min(1).max(200),
+  analytics_basis: z.enum(['consent', 'notice']).default('consent'),
+  privacy_notice_url: z.url({ protocol: /^https?$/ }).max(2000).optional().nullable(),
+  marketing_basis: z.enum(['checkbox', 'form_notice']).default('checkbox'),
+  marketing_notice: z.string().trim().min(20, 'Paste the full notice text shown next to the form').max(2000).optional().nullable(),
+  notice_covers_ads: z.boolean().default(false),
   // Websites allowed to run this partner's collector, normalised to origins.
   allowed_origins: z
     .array(z.string().trim().max(200))
@@ -167,6 +178,14 @@ export const partnerSchema = z.object({
   contact_email: z.email().optional().nullable(),
   notes: optText(2000),
 })
+  .refine((p) => p.analytics_basis === 'consent' || !!p.privacy_notice_url, {
+    message: 'Running without a consent banner needs the privacy notice URL',
+    path: ['privacy_notice_url'],
+  })
+  .refine((p) => p.marketing_basis === 'checkbox' || !!p.marketing_notice, {
+    message: 'Form-submission opt-in needs the notice text shown on the form',
+    path: ['marketing_notice'],
+  })
 
 export const campaignSchema = z.object({
   partner_id: z.uuid(),

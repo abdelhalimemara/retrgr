@@ -45,8 +45,18 @@ publicRoutes.post('/capture', async (c) => {
   const emailHash = email ? sha256(email) : null
   const phoneHash = phone ? sha256(phone) : null
   // Ad personalisation only counts on top of marketing consent.
-  const adConsent = body.consent.marketing && body.consent.ad_personalization
-  const purposes = body.consent.marketing ? ['marketing', ...(adConsent ? ['ad_personalization'] : [])] : []
+  // How the opt-in was given, decided server-side from the partner's settings:
+  //  - checkbox:    a ticked consent checkbox (partner form or our hosted page);
+  //  - form_notice: the partner shows a marketing notice by the form, so submitting it is the
+  //                 opt-in. The exact notice text is stored with the consent as evidence.
+  // The notice sits on every form of a form_notice partner, so it applies to all their captured
+  // forms; ticked checkboxes can only add to it (e.g. an ads box when the notice doesn't cover ads).
+  const viaNotice = body.source === 'auto' && target.marketing_basis === 'form_notice'
+  const ticked = body.consent.marketing
+  const marketing = ticked || viaNotice
+  const adConsent = (viaNotice && target.notice_covers_ads) || (ticked && body.consent.ad_personalization)
+  const purposes = marketing ? ['marketing', ...(adConsent ? ['ad_personalization'] : [])] : []
+  const basis = viaNotice ? 'form_notice' : 'checkbox'
   const extra = cleanFormExtras(body.extra)
 
   const save = () => withTransaction(async (db) => {
@@ -95,9 +105,18 @@ publicRoutes.post('/capture', async (c) => {
     // No opt-in → no consent row: the lead is kept but excluded from every segment and export.
     if (purposes.length) {
       await db.query(
-        `INSERT INTO consents (customer_id, campaign_id, policy_version, purposes, ip_address, user_agent)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [customerId, campaign.id, body.consent.policy_version, purposes, clientIp(c), clientUserAgent(c)],
+        `INSERT INTO consents (customer_id, campaign_id, policy_version, purposes, ip_address, user_agent, basis, notice_text)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          customerId,
+          campaign.id,
+          body.consent.policy_version,
+          purposes,
+          clientIp(c),
+          clientUserAgent(c),
+          basis,
+          viaNotice ? target.marketing_notice : null,
+        ],
       )
     }
 
@@ -150,9 +169,9 @@ publicRoutes.post('/capture', async (c) => {
   // The sGTM Retrgtr Client gets hashed match keys to populate user_data for
   // CAPI / Customer Match tags — only with ad-personalisation consent, never to browsers.
   if (viaSgtm(c) && adConsent) {
-    return c.json({ ok: true, match_keys: matchKeys({ email, phone, first_name: body.first_name, last_name: body.last_name, city: body.city, gender: body.gender, country: config.defaultCountry }) }, 201)
+    return c.json({ ok: true, marketing_consent: marketing, ad_personalization: adConsent, match_keys: matchKeys({ email, phone, first_name: body.first_name, last_name: body.last_name, city: body.city, gender: body.gender, country: config.defaultCountry }) }, 201)
   }
-  return c.json({ ok: true, marketing_consent: body.consent.marketing }, 201)
+  return c.json({ ok: true, marketing_consent: marketing, ad_personalization: adConsent }, 201)
 })
 
 /**

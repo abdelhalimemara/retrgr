@@ -198,5 +198,11 @@
     "name": "touch_points",
     "type": "INTEGER",
     "mode": "NULLABLE"
+  },
+  {
+    "name": "analytics_basis",
+    "type": "STRING",
+    "mode": "NULLABLE",
+    "description": "consent (banner) or notice (partner privacy notice, no banner)"
   }
 ]

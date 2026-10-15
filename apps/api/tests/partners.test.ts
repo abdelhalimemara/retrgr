@@ -58,3 +58,30 @@ describe('client-owned QR placements', () => {
     expect(placementSchema.safeParse({ ...base, match_param: 'bad key!', match_value: 'x' }).success).toBe(false)
   })
 })
+
+describe('partner consent settings', () => {
+  it('needs a privacy notice URL to run without a banner', () => {
+    expect(partnerSchema.safeParse({ name: 'B', analytics_basis: 'notice' }).success).toBe(false)
+    expect(partnerSchema.safeParse({ name: 'B', analytics_basis: 'notice', privacy_notice_url: 'https://brand.sa/privacy' }).success).toBe(true)
+  })
+  it('needs the notice text for form-submission opt-in', () => {
+    expect(partnerSchema.safeParse({ name: 'B', marketing_basis: 'form_notice' }).success).toBe(false)
+    expect(partnerSchema.safeParse({ name: 'B', marketing_basis: 'form_notice', marketing_notice: 'short' }).success).toBe(false)
+    const ok = partnerSchema.parse({
+      name: 'B',
+      marketing_basis: 'form_notice',
+      marketing_notice: 'By submitting, you agree to receive offers from Brand.',
+    })
+    expect(ok.notice_covers_ads).toBe(false)
+  })
+  it('defaults scans to banner consent and accepts notice', () => {
+    const base = {
+      scan_id: '00000000-0000-4000-8000-000000000001',
+      visitor_id: '00000000-0000-4000-8000-000000000002',
+      partner: 'abc123def456',
+    }
+    expect(scanSchema.parse({ ...base, consent: { analytics: true, policy_version: 'v1' } }).consent.basis).toBe('consent')
+    expect(scanSchema.parse({ ...base, consent: { analytics: true, basis: 'notice', policy_version: 'v1' } }).consent.basis).toBe('notice')
+    expect(scanSchema.safeParse({ ...base, consent: { analytics: true, basis: 'assumed', policy_version: 'v1' } }).success).toBe(false)
+  })
+})
