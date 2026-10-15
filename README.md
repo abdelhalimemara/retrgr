@@ -43,6 +43,12 @@ Billboard QR (?bid=…)  →  partner landing page (partner's own web GTM + Retr
 
   The server enforces both settings, so the snippet can't grant itself either one. Leads without
   an opt-in are stored but never exported or sent to ad platforms.
+- **Form abandonment.** For every form a visitor starts, the collector records which fields had
+  a value, the last field touched, and whether the form was submitted. It records field names
+  only: what people type into forms they don't submit is never read or sent. The **Forms** page
+  shows starts, submits, completion, how far people get per field, and where they quit. An
+  `ooh_form_abandon` dataLayer event and an sGTM `form_abandon` event let ad tags retarget
+  abandoners by cookie/pixel. The sGTM event is gated on `x-retrgtr-ad-storage`.
 - **Erasure.** Deleting a customer removes them from Cloud SQL. Their BigQuery events are queued
   and erased by an hourly job, because BigQuery refuses deletes on recently streamed rows.
 

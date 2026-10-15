@@ -27,6 +27,7 @@ const page = (load: () => Promise<{ default: ComponentType }>) =>
     ),
   )
 const AttributionPage = page(() => import('@/pages/attribution'))
+const FormsPage = page(() => import('@/pages/forms'))
 const CampaignsPage = page(() => import('@/pages/campaigns'))
 const CollectorPage = page(() => import('@/pages/collector'))
 const CustomersPage = page(() => import('@/pages/customers'))
@@ -64,6 +65,7 @@ export default function App() {
               <Route index element={<OverviewPage />} />
               <Route path="campaigns" element={<CampaignsPage />} />
               <Route path="attribution" element={<AttributionPage />} />
+              <Route path="forms" element={<FormsPage />} />
               <Route path="partners" element={<PartnersPage />} />
               <Route path="collector" element={<CollectorPage />} />
               <Route path="customers" element={<CustomersPage />} />

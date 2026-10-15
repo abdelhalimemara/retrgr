@@ -43,5 +43,21 @@
     "name": "last_field",
     "type": "STRING",
     "mode": "NULLABLE"
+  },
+  {
+    "name": "forms",
+    "type": "JSON",
+    "mode": "NULLABLE",
+    "description": "Per-form progress: form_id, fields_total, fields_filled (names only), last_field, submitted"
+  },
+  {
+    "name": "abandon_event",
+    "type": "BOOLEAN",
+    "mode": "NULLABLE"
+  },
+  {
+    "name": "ad_storage_granted",
+    "type": "BOOLEAN",
+    "mode": "NULLABLE"
   }
 ]

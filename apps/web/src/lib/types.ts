@@ -190,3 +190,16 @@ export interface Attribution {
 
 export const sar = (v: number | null) =>
   v == null ? '—' : v.toLocaleString('en-US', { style: 'currency', currency: 'SAR', maximumFractionDigits: 2 })
+
+export interface FormReport {
+  form_id: string
+  campaign_id: string
+  campaign_name: string
+  starts: number
+  submits: number
+  abandons: number
+  completion_pct: number
+  fields_total: number
+  fields: { field: string; filled: number; pct: number }[]
+  dropoffs: { field: string; abandons: number }[]
+}

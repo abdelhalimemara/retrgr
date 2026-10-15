@@ -1,4 +1,4 @@
-import { BarChart3, Code, Download, Filter, Handshake, LayoutDashboard, LogOut, Megaphone, Users } from 'lucide-react'
+import { BarChart3, ClipboardList, Code, Download, Filter, Handshake, LayoutDashboard, LogOut, Megaphone, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
@@ -27,6 +27,7 @@ const NAV = [
       { to: '/', label: 'Overview', icon: LayoutDashboard },
       { to: '/campaigns', label: 'Campaigns', icon: Megaphone },
       { to: '/attribution', label: 'Attribution', icon: BarChart3 },
+      { to: '/forms', label: 'Forms', icon: ClipboardList },
       { to: '/partners', label: 'Partners', icon: Handshake },
       { to: '/collector', label: 'Collector setup', icon: Code },
     ],

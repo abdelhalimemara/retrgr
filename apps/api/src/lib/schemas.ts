@@ -94,6 +94,24 @@ export const engagementSchema = z.object({
   form_started: z.boolean().default(false),
   form_submitted: z.boolean().default(false),
   last_field: z.string().max(40).optional().nullable(), // field-level drop-off
+  visitor_id: z.uuid().optional().nullable(),
+  // Per-form progress: field NAMES only, never values.
+  forms: z
+    .array(
+      z.object({
+        form_id: z.string().trim().min(1).max(120),
+        fields_total: z.number().int().min(0).max(500),
+        fields_filled: z.array(z.string().max(40)).max(100),
+        last_field: z.string().max(40).optional().nullable(),
+        submitted: z.boolean(),
+      }),
+    )
+    .max(10)
+    .default([]),
+  // First report of a form being abandoned on this page view (fires one form_abandon event).
+  abandon_event: z.boolean().default(false),
+  // The site's Consent Mode ad_storage state, so sGTM ad tags only retarget with ad consent.
+  ad_storage_granted: z.boolean().default(false),
 })
 
 export const captureSchema = z

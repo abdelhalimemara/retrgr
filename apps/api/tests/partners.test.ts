@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalizeOrigin } from '../src/lib/normalize.js'
-import { captureSchema, partnerSchema, placementSchema, scanSchema } from '../src/lib/schemas.js'
+import { captureSchema, engagementSchema, partnerSchema, placementSchema, scanSchema } from '../src/lib/schemas.js'
 import { originAllowed } from '../src/lib/targets.js'
 
 describe('partner websites', () => {
@@ -83,5 +83,25 @@ describe('partner consent settings', () => {
     expect(scanSchema.parse({ ...base, consent: { analytics: true, policy_version: 'v1' } }).consent.basis).toBe('consent')
     expect(scanSchema.parse({ ...base, consent: { analytics: true, basis: 'notice', policy_version: 'v1' } }).consent.basis).toBe('notice')
     expect(scanSchema.safeParse({ ...base, consent: { analytics: true, basis: 'assumed', policy_version: 'v1' } }).success).toBe(false)
+  })
+})
+
+describe('form abandonment payloads', () => {
+  const base = { scan_id: '00000000-0000-4000-8000-000000000001', dwell_seconds: 30, max_scroll_pct: 50, cta_clicks: 0 }
+  it('accepts per-form progress with field names only', () => {
+    const r = engagementSchema.parse({
+      ...base,
+      forms: [{ form_id: 'lead', fields_total: 5, fields_filled: ['email', 'phone'], last_field: 'city', submitted: false }],
+      abandon_event: true,
+    })
+    expect(r.forms[0].fields_filled).toEqual(['email', 'phone'])
+    expect(r.ad_storage_granted).toBe(false)
+  })
+  it('has no place for field values', () => {
+    const r = engagementSchema.parse({
+      ...base,
+      forms: [{ form_id: 'lead', fields_total: 1, fields_filled: ['email'], submitted: false, values: { email: 'a@b.co' } }],
+    })
+    expect(JSON.stringify(r)).not.toContain('a@b.co')
   })
 })

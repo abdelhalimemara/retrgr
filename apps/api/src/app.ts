@@ -10,6 +10,7 @@ import { attributionRoutes } from './routes/attribution.js'
 import { audienceRoutes } from './routes/audiences.js'
 import { catalogRoutes } from './routes/catalog.js'
 import { customerRoutes } from './routes/customers.js'
+import { formRoutes } from './routes/forms.js'
 import { ingestRoutes } from './routes/ingest.js'
 import { redirectRoutes } from './routes/redirect.js'
 import { publicRoutes } from './routes/public.js'
@@ -41,6 +42,7 @@ admin.route('/', catalogRoutes)
 admin.route('/', customerRoutes)
 admin.route('/', audienceRoutes)
 admin.route('/', attributionRoutes)
+admin.route('/', formRoutes)
 app.route('/api/admin', admin)
 
 app.onError((err, c) => {

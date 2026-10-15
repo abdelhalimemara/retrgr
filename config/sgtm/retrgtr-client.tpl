@@ -66,6 +66,8 @@ ___SANDBOXED_JS_FOR_SERVER___
 //  3. Runs the container so GA4 / Meta CAPI / TikTok / Snap / Google Ads tags fire.
 //     Leads carry user_data ONLY as SHA-256 hashes, and ONLY with ad-personalisation consent.
 //     Gate activation tags on the event data key `x-retrgtr-ad-personalization` = true.
+//  4. Emits `form_abandon` (no form data) when a visitor leaves a started form; gate ad tags on
+//     `x-retrgtr-ad-storage` = true.
 
 const claimRequest = require('claimRequest');
 const getRequestPath = require('getRequestPath');
@@ -154,7 +156,24 @@ sendHttpRequest(
 ).then((res) => {
   const ok = res.statusCode >= 200 && res.statusCode < 300;
   let responseBody = res.body || '';
-  if (!ok || action === 'engagement' || action === 'datalayer') return done(res.statusCode, responseBody);
+  if (!ok || action === 'datalayer') return done(res.statusCode, responseBody);
+  if (action === 'engagement') {
+    if (body.abandon_event !== true) return done(res.statusCode, responseBody);
+    // A form was started and left without submitting. No form data is involved: ad tags can
+    // retarget by cookie/pixel, gated on x-retrgtr-ad-storage (the site's Consent Mode ad_storage).
+    const abandoned = (body.forms || []).filter((f) => f.submitted !== true)[0] || {};
+    return runContainer({
+      event_name: 'form_abandon',
+      event_id: 'abandon-' + body.scan_id,
+      client_id: body.visitor_id,
+      ip_override: ip,
+      user_agent: ua,
+      'x-retrgtr-form-id': abandoned.form_id,
+      'x-retrgtr-last-field': abandoned.last_field,
+      'x-retrgtr-fields-filled': (abandoned.fields_filled || []).length,
+      'x-retrgtr-ad-storage': body.ad_storage_granted === true,
+    }, () => done(res.statusCode, responseBody));
+  }
 
   const ctx = body.context || {};
   const event = {

@@ -1,53 +1,18 @@
 /*!
- * Retrgtr collector v3 — install as a GTM Custom HTML tag on the QR landing page:
- *
- *   <script src="https://YOUR-DASHBOARD-HOST/retrgtr.js"
- *           data-endpoint="https://YOUR-SGTM-HOST"   (the central Retrgtr sGTM; or the API host)
- *           data-path="/retrgtr"                     ("/retrgtr" via sGTM, "/api/public" direct to API)
- *           data-partner="PARTNER-KEY" data-policy-version="v1" async></script>
- *
- * One snippet per partner, in the partner's own GTM. The campaign is resolved from the
- * billboard code (bid) in the QR URL, else the partner's active campaign. Optional
- * data-campaign="slug" pins a campaign. Requests are only accepted from the websites
- * registered for the partner in the dashboard.
- *
- * Optional:
- *   data-consent="banner" (default) wait for the site's consent banner (see below)
- *                "notice"  run without a banner, under the partner's privacy notice. Only accepted
- *                          for partners set up that way in the dashboard; still stops if the visitor
- *                          actively declines analytics in a banner.
- *   data-forms="auto" (default) | "off"     data-datalayer="on" (default) | "off"
- *
- * Banner mode: in GTM, give the tag Additional Consent Checks → `analytics_storage` so it only
- * loads once analytics consent is granted. Notice mode: no consent check, trigger on All Pages.
- *
- * Marketing opt-in: a ticked consent checkbox on the form, or — for partners set up with
- * "form submission = opt-in" in the dashboard — submitting a form that shows their notice.
- * That decision is made server-side and recorded with the exact notice text.
- *
- * Billboard QR URLs: /landing?bid=<placement-code>&v=<offer-variant>&utm_source=ooh…
- *
- * What it does:
- *  - scan:        device/context snapshot + repeat-exposure counter → POST {path}/scan
- *  - engagement:  dwell, scroll, CTA clicks, scan→action, form drop-off → beacon on pagehide
- *  - forms:       ANY form submitted on the page that contains an email or phone is read
- *                 automatically (no markup changes) → POST {path}/capture. Fields are mapped
- *                 by type/autocomplete/name/label (EN + AR). Passwords, hidden fields, card
- *                 numbers and national IDs are never read; login forms are skipped. The page's
- *                 own submit is never blocked. Leads without a marketing opt-in are stored but
- *                 never exported or sent to ad platforms.
- *  - dataLayer:   every push (existing + future) is batched → POST {path}/datalayer, with
- *                 personal values redacted (again server-side) before it reaches BigQuery.
- * Personal data is only ever sent to the endpoint above — never to the dataLayer.
- * Add data-retrgtr-ignore to a form to exclude it.
+ * Retrgtr collector — one snippet per partner, added as a Custom HTML tag in the partner's GTM:
+ *   <script src="https://DASHBOARD/retrgtr.js" data-endpoint="https://SGTM" data-path="/retrgtr"
+ *           data-partner="KEY" data-policy-version="v1" [data-consent="notice"] async></script>
+ * Options: data-campaign="slug", data-forms="off", data-datalayer="off"; data-retrgtr-ignore on a form.
+ * Sends scans, engagement (incl. per-form progress by field NAME), submitted forms with an email or
+ * phone, and redacted dataLayer pushes. Unsubmitted form values are never read. Personal data only
+ * goes to the endpoint, never to the dataLayer. Full documentation: README.md and the dashboard's
+ * Collector setup page.
  */
 (function () {
   'use strict'
   if (window.retrgtr) return
   var s = document.currentScript
-  var attr = function (n, d) {
-    return (s && s.getAttribute(n)) || d
-  }
+  var attr = function (n, d) { return (s && s.getAttribute(n)) || d }
   var pathAttr = s && s.getAttribute('data-path')
   var ENDPOINT = attr('data-endpoint', '').replace(/\/$/, '') + (pathAttr == null ? '/retrgtr' : pathAttr)
   var CAMPAIGN = attr('data-campaign', '') || null
@@ -56,17 +21,17 @@
   var URL_PARAMS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term', 'fbclid', 'gclid', 'ttclid', 'sccid']
   var FORM_FIELDS = ['email', 'phone', 'first_name', 'last_name', 'age_range', 'gender', 'city']
   var BASIS = attr('data-consent', 'banner') === 'notice' ? 'notice' : 'consent'
-  // Notice mode never overrides a visitor who actively declined analytics in a consent banner.
-  function declinedAnalytics() {
+  // Latest Consent Mode state for a type, read from gtag('consent', 'default'|'update', …) pushes.
+  function consentState(type, updatesOnly) {
     var state = null
     ;(window.dataLayer || []).forEach(function (e) {
-      if (e && e[0] === 'consent' && e[1] === 'update' && e[2] && e[2].analytics_storage) state = e[2].analytics_storage
+      if (e && e[0] === 'consent' && (e[1] === 'update' || (!updatesOnly && e[1] === 'default')) && e[2] && e[2][type]) state = e[2][type]
     })
-    return state === 'denied'
+    return state
   }
-  if (BASIS === 'notice' && declinedAnalytics()) return
-  var AUTO_FORMS = attr('data-forms', 'auto') !== 'off'
-  var DATALAYER = attr('data-datalayer', 'on') !== 'off'
+  // Notice mode never overrides a visitor who actively declined analytics in a consent banner.
+  if (BASIS === 'notice' && consentState('analytics_storage', true) === 'denied') return
+  var AUTO_FORMS = attr('data-forms', 'auto') !== 'off', DATALAYER = attr('data-datalayer', 'on') !== 'off'
   var CTX_KEY = 'retrgtr_ctx'
 
   function uuid() {
@@ -83,19 +48,11 @@
     } catch (e) {}
     return null
   }
-  function push(data) {
-    window.dataLayer = window.dataLayer || []
-    window.dataLayer.push(data)
-  }
+  function push(data) { (window.dataLayer = window.dataLayer || []).push(data) }
   function send(path, body, beacon) {
     var json = JSON.stringify(body)
     if (beacon && navigator.sendBeacon) return navigator.sendBeacon(ENDPOINT + path, json)
-    return fetch(ENDPOINT + path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: json,
-      keepalive: true,
-    })
+    return fetch(ENDPOINT + path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: json, keepalive: true })
   }
 
   // ---- placement + campaign context (persisted for the session so in-site navigation keeps it) ----
@@ -234,35 +191,65 @@
   var maxScroll = 0
   var ctaClicks = 0
   var firstActionTs = null
-  var formStarted = false
-  var formSubmitted = false
+  var formStarted = false, formSubmitted = false
   var lastField = null
-  function action() {
-    if (!firstActionTs) firstActionTs = Date.now()
-  }
-  window.addEventListener(
-    'scroll',
-    function () {
-      var h = document.documentElement.scrollHeight || document.body.scrollHeight
-      var p = Math.round(((window.scrollY + window.innerHeight) / h) * 100)
-      if (p > maxScroll) maxScroll = Math.min(p, 100)
-    },
-    { passive: true },
-  )
+  function action() { if (!firstActionTs) firstActionTs = Date.now() }
+  window.addEventListener('scroll', function () {
+    var h = document.documentElement.scrollHeight || document.body.scrollHeight
+    var p = Math.round(((window.scrollY + window.innerHeight) / h) * 100)
+    if (p > maxScroll) maxScroll = Math.min(p, 100)
+  }, { passive: true })
   document.addEventListener('click', function (e) {
     if (e.target.closest && e.target.closest('[data-cta]')) {
       ctaClicks++
       action()
     }
   })
-  document.addEventListener('focusin', function (e) {
-    var f = e.target.form
-    if (f && !f.hasAttribute('data-retrgtr-ignore') && (e.target.name || e.target.id)) {
-      formStarted = true
-      lastField = String(e.target.name || e.target.id).slice(0, 40) // field name only, never its value
-      action()
+  // ---- form analytics: how far people get and where they stop — field NAMES only ----
+  // Typed values of forms that are never submitted are not read or sent.
+  var formStats = {}
+  var TRACK_SKIP = /^(password|hidden|file|submit|button|reset|image)$/
+  function fieldName(el) {
+    return String(el.name || el.id || '').slice(0, 40)
+  }
+  function formKey(f) {
+    return (f.id || f.getAttribute('name') || (f.getAttribute('action') || '').split('?')[0] || 'form').slice(0, 120)
+  }
+  function trackable(el) {
+    return el && el.form && !el.form.closest('[data-retrgtr-ignore]') && fieldName(el) && !TRACK_SKIP.test((el.type || '').toLowerCase())
+  }
+  function statFor(f) {
+    var k = formKey(f)
+    if (!formStats[k]) {
+      var total = 0
+      Array.prototype.forEach.call(f.elements, function (el) {
+        if (trackable(el) && (el.type !== 'radio' || el === f.elements[el.name][0])) total++
+      })
+      formStats[k] = { form_id: k, fields_total: total, filled: {}, last_field: null, submitted: false, reported: false }
     }
+    return formStats[k]
+  }
+  document.addEventListener('focusin', function (e) {
+    if (!trackable(e.target)) return
+    var st = statFor(e.target.form)
+    formStarted = true
+    lastField = st.last_field = fieldName(e.target)
+    action()
   })
+  // Record only WHETHER a field has a value when the visitor moves on — never the value.
+  function noteFilled(e) {
+    var el = e.target
+    if (!trackable(el)) return
+    var has = el.type === 'checkbox' || el.type === 'radio' ? el.checked : !!(el.value && String(el.value).trim())
+    var st = statFor(el.form)
+    if (has) st.filled[fieldName(el)] = true
+    else if (el.type !== 'radio') delete st.filled[fieldName(el)]
+  }
+  document.addEventListener('focusout', noteFilled)
+  document.addEventListener('change', noteFilled)
+  function markSubmitted(f) {
+    if (f && f.tagName === 'FORM') statFor(f).submitted = true
+  }
   var flushed = 0
   function flush() {
     var dwell = Math.round((Date.now() - start) / 1000)
@@ -277,7 +264,23 @@
       form_started: formStarted,
       form_submitted: formSubmitted,
       last_field: formSubmitted ? null : lastField,
+      visitor_id: visitorId,
+      forms: [],
+      abandon_event: false,
+      ad_storage_granted: consentState('ad_storage') === 'granted',
     }
+    Object.keys(formStats).slice(0, 10).forEach(function (k) {
+      var st = formStats[k]
+      var filled = Object.keys(st.filled).slice(0, 100)
+      body.forms.push({ form_id: st.form_id, fields_total: st.fields_total, fields_filled: filled, last_field: st.last_field, submitted: st.submitted })
+      if (!st.submitted && !st.reported) {
+        // Once per form per page view: lets the partner's web tags (and sGTM) retarget abandoners
+        // by cookie/pixel — no form data involved.
+        st.reported = true
+        body.abandon_event = true
+        push({ event: 'ooh_form_abandon', ooh_form_id: st.form_id, ooh_last_field: st.last_field, ooh_fields_filled: filled.length, ooh_bid: bid })
+      }
+    })
     send('/engagement', body, true)
     push({ event: 'ooh_engagement', ooh_dwell_seconds: body.dwell_seconds, ooh_max_scroll_pct: maxScroll, ooh_cta_clicks: ctaClicks })
   }
@@ -396,6 +399,7 @@
 
   var recent = {}
   function autoCapture(form) {
+    markSubmitted(form)
     var f = readForm(form)
     if (!f) return
     // Same answers within 10s = one submission seen twice (click + submit); changed answers are re-sent.
@@ -428,6 +432,8 @@
       var box = container(btn)
       if (!box) return
       var text = (btn.innerText || btn.value || btn.getAttribute('aria-label') || '').trim()
+      // A form the browser itself refuses (required/invalid fields) is not submitted — don't read it.
+      if (box.tagName === 'FORM' && box.checkValidity && !box.checkValidity()) return
       if (btn.type === 'submit' || SUBMIT_TEXT.test(text)) setTimeout(function () { autoCapture(box) }, 0)
     }, true)
   }

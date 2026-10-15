@@ -86,8 +86,28 @@ ingestRoutes.post('/engagement', async (c) => {
       WHERE id = $1 RETURNING id`,
     [b.scan_id, b.dwell_seconds, b.max_scroll_pct, b.cta_clicks],
   )
-  // Engagement only counts for scans we recorded (i.e. analytics consent was given).
-  if (updated.length) await writeEvent('engagement_events', { ...b, event_ts: new Date().toISOString() }, `${b.scan_id}:${b.dwell_seconds}`)
+  // Engagement only counts for scans we recorded (i.e. analytics was permitted).
+  if (!updated.length) return c.body(null, 202)
+  for (const f of b.forms) {
+    // Beacons repeat as the visitor comes and goes: keep the furthest progress seen.
+    await query(
+      `INSERT INTO form_sessions (scan_id, form_id, fields_total, fields_filled, last_field, submitted)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (scan_id, form_id) DO UPDATE SET
+         fields_total = GREATEST(form_sessions.fields_total, EXCLUDED.fields_total),
+         fields_filled = ARRAY(SELECT DISTINCT unnest(form_sessions.fields_filled || EXCLUDED.fields_filled)),
+         last_field = COALESCE(EXCLUDED.last_field, form_sessions.last_field),
+         submitted = form_sessions.submitted OR EXCLUDED.submitted,
+         updated_at = now()`,
+      [b.scan_id, f.form_id, f.fields_total, f.fields_filled, f.last_field ?? null, f.submitted],
+    )
+  }
+  const { forms, ...rest } = b
+  await writeEvent(
+    'engagement_events',
+    { ...rest, forms: forms.length ? JSON.stringify(forms) : null, event_ts: new Date().toISOString() },
+    `${b.scan_id}:${b.dwell_seconds}`,
+  )
   return c.body(null, 202)
 })
 

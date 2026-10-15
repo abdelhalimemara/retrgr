@@ -131,6 +131,15 @@ publicRoutes.post('/capture', async (c) => {
       ? (await db.query('SELECT id FROM scans WHERE id = $1', [body.scan_id])).rows[0]?.id ?? null
       : null
 
+    // Server-side truth for form analytics: this form was submitted.
+    if (linkedScan && body.form_id) {
+      await db.query(
+        `INSERT INTO form_sessions (scan_id, form_id, submitted) VALUES ($1, $2, true)
+         ON CONFLICT (scan_id, form_id) DO UPDATE SET submitted = true, updated_at = now()`,
+        [linkedScan, body.form_id.slice(0, 120)],
+      )
+    }
+
     const ctx = body.context
     await db.query(
       `INSERT INTO touchpoints (customer_id, campaign_id, placement_id, scan_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
